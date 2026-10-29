@@ -84,6 +84,29 @@ Format: what got done, key decisions (with the reason), what we learned, what's 
 
 **Learned**
 - Letting the model type a prop name failed on small spelling differences; giving it the verified list as choices (an enum) fixed it.
+
+### Video referee test (Freeze Dance, 10 s clip, 1 player)
+Ground truth (checked frame by frame): dancing 1.0–5.5 s, frozen 6.0–8.0 s, moved at 8.5 s.
+
+| Method | Result | Time |
+|---|---|---|
+| **A. Muse Spark watches the whole video** | Correct both ways (moved at 8.5 s; held still when the buzzer was at 8.0 s) | 10–14 s |
+| **B. SAM 3.1 tracks the person through the video** | Clear numbers: outline shift ≤2% while frozen, jumps to 14% at 8.5 s | 28 s (all 302 frames) |
+| **C. Frames (2/sec) from the freeze window → Muse Spark** | **6/6 correct** (3 held-still, 3 moved, all at 8.5 s) | **3–5 s** |
+
+**Decision:** referee = frames → Muse Spark for the call, plus SAM on the same frames (in parallel) for a measured "movement meter" as evidence. Whole-video calls are too slow for a party.
+**Untested:** several players at once, a hand-held (shaky) camera, music playing.
+
+### Recording screen + round referee
+**Done**
+- Round screen: instructions → record the round with the phone camera → frames pulled out on the phone (2/sec) → referee verdict, evidence frame with outlines, and a SAM "movement meter"
+- **Freeze is detected automatically:** the iPhone camera covers the app while recording, so the app can't mark when the music stopped. The referee finds the moment the group goes still (SAM movement below 6%) and judges only after that.
+- Last-frame games (Hot Potato, Tower Stack, Scavenger Rush, AI experiments) use the photo referee on the final frame
+- Full flow tested against the live server: scan → head count → Freeze Dance → upload frames → "froze at 6 s, P1 moved at 8.5 s" (6 s referee time)
+
+**Bug found and fixed:** framed photos on the wall were tracked as players P2 and P3 ("held perfectly still"), which also broke freeze detection. Players must now be at least 20% of the frame height.
+
+**Decision:** keep the standard (non-contributor) models and pay usage directly. *Why:* hackathon credits only cover contributor models, whose inputs (including users' photos) may be used for training.
 - Referee needs distance measurements ("closest pillow to the sofa")
 - Games must respect prop counts (2 pillows can't serve 4 players)
 - Test photos with people, outdoors, and unsafe locations

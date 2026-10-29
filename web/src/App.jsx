@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { startScan, getScan, answerPlayers, getGame, shrinkPhoto } from './api.js'
+import { startScan, getScan, answerPlayers, getGame, shrinkPhoto, extractFrames, refereeRound } from './api.js'
+import Round from './Round.jsx'
 import './App.css'
 
 const VERDICT = {
@@ -24,6 +25,7 @@ export default function App() {
   const [result, setResult] = useState(null)
   const [game, setGame] = useState(null)
   const [error, setError] = useState(null)
+  const [playing, setPlaying] = useState(null)
   const [clock, setClock] = useState({ start: 0, answeredAt: 0 })
   const fileInput = useRef(null)
 
@@ -71,14 +73,17 @@ export default function App() {
   }
 
   async function openGame(card, index) {
-    setGame({ ...card, rounds: null, waitedMs: null })
+    setGame({ ...card, index, rounds: null, waitedMs: null })
     try {
       const { game: full, waitedMs } = await getGame(scan.id, index)
-      setGame({ ...full, waitedMs })
+      setGame({ ...full, index, waitedMs })
     } catch (err) {
       setGame(g => ({ ...g, error: err.message }))
     }
   }
+
+  // Opening a round switches to the round screen.
+  useEffect(() => { if (playing) setScreen('round') }, [playing])
 
   const snap = () => fileInput.current?.click()
 
@@ -198,9 +203,20 @@ export default function App() {
               <p>{r.instruction}</p>
               <p className="meta">🎥 Record the {r.seconds}s round{r.referee.look_for ? `: ${r.referee.look_for}` : ''}</p>
               <p className="meta">🧑‍⚖️ {r.referee.rule}</p>
+              <button className="primary" onClick={() => setPlaying({ roundIndex: i })}>▶ Play round {i + 1}</button>
             </section>
           ))}
         </main>
+      )}
+
+      {screen === 'round' && game && playing && (
+        <Round
+          scanId={scan.id}
+          game={game}
+          roundIndex={playing.roundIndex}
+          onBack={() => { setPlaying(null); setScreen('games') }}
+          onNext={() => setPlaying(p => ({ roundIndex: p.roundIndex + 1 }))}
+        />
       )}
 
       {screen === 'error' && (

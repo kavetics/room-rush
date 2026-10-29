@@ -90,3 +90,39 @@ details .photo-wrap { margin-top: 12px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .timing { font-size: 0.8rem; color: var(--muted); margin: 0; }
+
+/* Round screen */
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+.secondary { background: none; border: 2px solid var(--accent); color: var(--accent-text); border-radius: 14px; padding: 14px; font-weight: 700; }
+.players { list-style: none; padding: 0; margin: 8px 0 0; }
+.players li { padding: 6px 0; font-size: 1.05rem; }
+.players .tag { margin-left: 8px; }
+.photo .evidence-label { font-family: system-ui, sans-serif; font-weight: 800; fill: #fff; paint-order: stroke; stroke: #000; stroke-width: 6px; }
+.meter { display: grid; grid-template-columns: 32px 1fr; align-items: end; gap: 8px; margin: 8px 0; }
+.bars { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 64px; border-bottom: 1px solid var(--border); }
+.bar { flex: 1; background: var(--border); border-radius: 2px 2px 0 0; }
+.bar.still { background: var(--go); }
+.bar.moving { background: var(--stop); }
+.threshold { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--muted); }
+.meter-axis { display: flex; justify-content: space-between; margin: 0 0 0 40px; }
+
+/* Behind the scenes */
+.behind summary { font-weight: 700; cursor: pointer; }
+.steps { padding-left: 20px; margin: 10px 0; }
+.steps li { margin: 4px 0; }
+.strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x mandatory; }
+.frame { margin: 0; flex: 0 0 120px; scroll-snap-align: start; }
+.frame .photo { width: 120px; border-radius: 8px; }
+.frame .photo img { max-height: none; width: 120px; }
+.frame figcaption { font-size: 0.75rem; margin-top: 4px; color: var(--muted); }
+.box { fill: none; stroke-width: 10; }
+.box.before { stroke: #8a84a3; }
+.box.still { stroke: #3ddc84; }
+.box.moving { stroke: #ff4d4d; }
+.box.ignored { stroke: #8a84a3; stroke-dasharray: 16 12; stroke-width: 6; }
+figcaption .still { color: var(--go); font-weight: 700; }
+figcaption .moving { color: var(--stop); font-weight: 700; }
+.key { padding: 0 6px; border-radius: 6px; font-weight: 700; color: #0f0b1e; }
+.key.before { background: #8a84a3; } .key.still { background: #3ddc84; } .key.moving { background: #ff4d4d; } .key.ignored { border: 1px dashed #8a84a3; color: var(--muted); }
+.evidence { font-size: 0.75rem; background: var(--bg); border-radius: 10px; padding: 10px; overflow-x: auto; white-space: pre-wrap; }

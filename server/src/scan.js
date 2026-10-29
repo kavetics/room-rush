@@ -130,6 +130,17 @@ export async function getRounds(id, index) {
   return { game: { ...scan.shown[index], rounds }, waitedMs: Date.now() - tappedAt };
 }
 
+/** The round a recorded clip belongs to (rounds are already known once the host has opened the game). */
+export async function getRound(id, gameIndex, roundIndex) {
+  const scan = scans.get(id);
+  if (!scan) throw notFound();
+  if (!scan.shown?.[gameIndex]) throw Object.assign(new Error('Game not found.'), { status: 404 });
+  const { rounds } = await roundsFor(scan, gameIndex);
+  const round = rounds[roundIndex];
+  if (!round) throw Object.assign(new Error('Round not found.'), { status: 404 });
+  return round;
+}
+
 export function getScan(id) {
   const scan = scans.get(id);
   return scan && publicView(scan);

@@ -5,7 +5,8 @@ import multer from 'multer';
 import { toDataUrl } from './meta.js';
 import { readRoom } from './room.js';
 import { referee } from './referee.js';
-import { startScan, getScan, answerPlayers, getRounds } from './scan.js';
+import { startScan, getScan, answerPlayers, getRounds, getRound } from './scan.js';
+import { refereeRound } from './roundReferee.js';
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -46,6 +47,17 @@ app.post('/api/referee', upload.single('photo'), async (req, res, next) => {
   try {
     const challenge = JSON.parse(req.body.challenge || '{}');
     res.json(await referee(photoFrom(req), challenge));
+  } catch (err) { next(err); }
+});
+
+// A recorded round: the phone uploads frames pulled from the clip, plus their times in seconds.
+app.post('/api/scan/:id/games/:game/rounds/:round/referee', upload.array('frames', 40), async (req, res, next) => {
+  try {
+    const round = await getRound(req.params.id, Number(req.params.game), Number(req.params.round));
+    const times = JSON.parse(req.body.times || '[]');
+    if (!req.files?.length || times.length !== req.files.length) throw Object.assign(new Error('Send frames with matching times.'), { status: 400 });
+    const frames = req.files.map((f, i) => ({ t: times[i], dataUrl: toDataUrl(f.buffer, f.mimetype) }));
+    res.json(await refereeRound(round, frames));
   } catch (err) { next(err); }
 });
 

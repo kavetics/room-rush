@@ -16,3 +16,6 @@ CLAUDE.local.md
 
 # Test photos (contain people)
 test-photos/
+
+# Local test media served to the browser (contains people)
+web/public/_test/

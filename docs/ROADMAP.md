@@ -16,6 +16,7 @@ Things Room Rush could do beyond the hackathon demo. These are **not built**; th
 ## Capture and share
 - **Highlight reel export.** Stitch round clips, show graphics and captions into one shareable video for Instagram Reels and X.
 - **In-app camera locked to the 1× lens.** Avoids ultra-wide distortion when reading the room. Needs a secure (https) link.
+- **All-in-one game camera.** One in-app screen that records the round, plays the music, and tracks everyone's movement live, all at once. The app controls the music, so it knows the exact moment it stops; the referee can show a live movement meter and call players out in real time instead of after the round. Replaces today's flow, where the iPhone camera takes over the screen and the referee has to detect the freeze afterwards.
 
 ## Commerce and partners
 - **Order props through Muse connectors.** "No ball? Get one delivered" via Instacart or Walmart.
