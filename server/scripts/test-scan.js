@@ -25,14 +25,17 @@ console.log(`Background: ${result.events.map(e => `${e.event} @${(e.atMs / 1000)
 if (result.beforeYouPlay.length) console.log(`Before you play: ${result.beforeYouPlay.join(' | ')}`);
 if (result.peopleNotes.length) console.log(`Heads up: ${result.peopleNotes.join(' ')}`);
 for (const g of result.games) {
-  console.log(`\n🎮 ${g.title} (${g.min_players}-${g.max_players} players, ${g.space_needed} space${g.seated_role ? `, seated: ${g.seated_role}` : ''})`);
-  console.log(`   ${g.pitch}`);
+  console.log(`\n${g.kind === 'classic' ? '🎯' : '🧪'} ${g.title} (${g.min_players}-${g.max_players} players, ${g.space_needed} space${g.seated_role ? `, seated: ${g.seated_role}` : ''})`);
+  if (g.setup) console.log(`   Setup: ${g.setup}`);
+  g.rounds?.forEach((r, i) => console.log(`   R${i + 1} (${r.seconds}s): ${r.instruction}\n       🧑‍⚖️ ${r.referee.rule} [${r.referee.type}: ${r.referee.sam_prompts.join(', ')}]`));
 }
 
 // Host reads the cards for a few seconds, then taps the first one.
 const readSeconds = 8;
-console.log(`\n[${secs()}] ...host reads the cards for ${readSeconds}s, then taps "${result.games[0]?.title}"...`);
+console.log(`\n[${secs()}] ...host reads the cards for ${readSeconds}s, then taps an AI experiment...`);
 await new Promise(r => setTimeout(r, readSeconds * 1000));
-const { game, waitedMs } = await getRounds(scan.id, 0);
+const firstExperiment = result.games.findIndex(g => g.kind === 'experiment');
+if (firstExperiment < 0) process.exit(0);
+const { game, waitedMs } = await getRounds(scan.id, firstExperiment);
 console.log(`[${secs()}] Rounds shown. Host waited ${(waitedMs / 1000).toFixed(1)}s after tapping.`);
-game.rounds.forEach((r, i) => console.log(`   R${i + 1} (${r.seconds}s): ${r.instruction}\n       📸 ${r.photo_check.what_to_photograph} → ${r.photo_check.rule} [SAM: ${r.photo_check.sam_prompts.join(', ')}]`));
+game.rounds.forEach((r, i) => console.log(`   R${i + 1} (${r.seconds}s): ${r.instruction}\n       🧑‍⚖️ ${r.referee.rule} [SAM: ${r.referee.sam_prompts.join(', ')}]`));

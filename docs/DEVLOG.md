@@ -68,6 +68,22 @@ Format: what got done, key decisions (with the reason), what we learned, what's 
 **Next**
 - Test clip: 5–10 s, everyone freezes and one person moves slightly → test SAM tracking vs. frames → Muse Spark
 - Recording screen in the app (record a round → referee result with outlines)
+
+---
+
+## Thu Oct 29: Classics library and AI experiments
+**Done**
+- **Curated classics:** Freeze Dance, Hot Potato, Tower Stack, Scavenger Rush. Rules, player ranges, round lengths and referee checks are fixed and vetted; Muse Spark only adapts them to the room (which prop, where to play, home base, setup line).
+- **AI Experiments section:** games invented for the room, tagged "AI-invented · untested" with a note that the referee may be less reliable.
+- **docs/ROADMAP.md:** pitch-only items (community library, multi-phone, group chats, glasses, reel export, connectors, accessibility).
+
+**Decisions**
+- **Classics first, AI experiments second.** *Why:* proven games are more fun, safer and easier to referee accurately; AI still adapts and referees them, and the experiments keep the creative side, clearly labeled.
+- **Community library is roadmap only.** *Why:* no users yet (never fake popularity), and user-submitted challenges need moderation before launch.
+- **Code verifies the AI's prop choice** against SAM's counts: Tower Stack is skipped when there are fewer than 3 stackable items.
+
+**Learned**
+- Letting the model type a prop name failed on small spelling differences; giving it the verified list as choices (an enum) fixed it.
 - Referee needs distance measurements ("closest pillow to the sofa")
 - Games must respect prop counts (2 pillows can't serve 4 players)
 - Test photos with people, outdoors, and unsafe locations

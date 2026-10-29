@@ -57,7 +57,7 @@ const ROUNDS_SCHEMA = {
         required: ['instruction', 'seconds', 'photo_check'],
         properties: {
           instruction: { type: 'string', description: 'What the host reads out loud: fun, punchy, at most 25 words. Do not restate safety rules; the Before-you-play checklist already covers them.' },
-          seconds: { type: 'integer', minimum: 15, maximum: 180 },
+          seconds: { type: 'integer', minimum: 5, maximum: 15 },
           photo_check: {
             type: 'object',
             additionalProperties: false,
@@ -124,7 +124,7 @@ export async function designRounds(card, report, players) {
     prompt: [
       `Space report: ${JSON.stringify(inventoryOf(report))}`,
       `Game: ${JSON.stringify(card)}`,
-      `Players: ${players}. Write 2 short rounds (3 only if the game truly needs it). Keep it fast and funny.`,
+      `Players: ${players}. Write 2 short rounds (3 only if the game truly needs it). Each round lasts 5 to 15 seconds and is recorded as one video clip. Keep it fast and funny.`,
     ].join('\n'),
     schemaName: 'game_rounds',
     schema: ROUNDS_SCHEMA,

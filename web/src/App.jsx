@@ -149,14 +149,27 @@ export default function App() {
               <ul>{result.beforeYouPlay.map(t => <li key={t}>{t}</li>)}</ul>
             </section>
           )}
-          <h2 className="section-title">{result.games.length} games for {players} players</h2>
-          {result.games.map((g, index) => (
-            <button key={g.title} className="card game" onClick={() => openGame(g, index)}>
-              <h3>{g.title}</h3>
-              <p>{g.pitch}</p>
-              <p className="meta">{g.min_players}–{g.max_players} players · {g.space_needed} space{g.seated_role ? ' · seated role' : ''}</p>
-            </button>
-          ))}
+          {[
+            { kind: 'classic', title: '🎯 Classics', blurb: 'Proven party games, set up for your room.' },
+            { kind: 'experiment', title: '🧪 AI Experiments', blurb: 'Invented by AI just now for this room. Untested, and the referee may be less reliable. Why not try something new?' },
+          ].map(section => {
+            const games = result.games.map((g, index) => ({ g, index })).filter(({ g }) => g.kind === section.kind)
+            if (!games.length) return null
+            return (
+              <section key={section.kind} className="game-section">
+                <h2 className="section-title">{section.title}</h2>
+                <p className="meta">{section.blurb}</p>
+                {games.map(({ g, index }) => (
+                  <button key={g.title} className={`card game ${g.kind}`} onClick={() => openGame(g, index)}>
+                    {g.kind === 'experiment' && <span className="tag">AI-invented · untested</span>}
+                    <h3>{g.title}</h3>
+                    <p>{g.pitch}</p>
+                    <p className="meta">{g.min_players}–{g.max_players} players · {g.space_needed} space{g.seated_role ? ' · seated role' : ''}</p>
+                  </button>
+                ))}
+              </section>
+            )
+          })}
           <details className="card">
             <summary>What the AI saw</summary>
             <Photo url={photoUrl} report={scan.report} />
@@ -169,8 +182,10 @@ export default function App() {
         <main>
           <button className="link" onClick={() => setGame(null)}>← All games</button>
           <section className="card">
+            {game.kind === 'experiment' && <span className="tag">AI-invented · untested</span>}
             <h2>{game.title}</h2>
             <p>{game.pitch}</p>
+            {game.setup && <p><strong>Setup:</strong> {game.setup}</p>}
             <p className="meta">Roles: {game.roles.join(', ')}{game.seated_role ? ` · Seated: ${game.seated_role}` : ''}</p>
             <p className="meta">Uses: {game.uses.join(', ')}</p>
           </section>
@@ -181,8 +196,8 @@ export default function App() {
             <section key={i} className="card">
               <h3>Round {i + 1} · {r.seconds}s</h3>
               <p>{r.instruction}</p>
-              <p className="meta">📸 {r.photo_check.what_to_photograph}</p>
-              <p className="meta">🧑‍⚖️ {r.photo_check.rule}</p>
+              <p className="meta">🎥 Record the {r.seconds}s round{r.referee.look_for ? `: ${r.referee.look_for}` : ''}</p>
+              <p className="meta">🧑‍⚖️ {r.referee.rule}</p>
             </section>
           ))}
         </main>

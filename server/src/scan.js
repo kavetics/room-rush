@@ -1,6 +1,6 @@
 // One scan per photo. Each step starts as early as possible and hides behind something the host is doing:
 //   photo → location check + people count (~3 s) → host counts heads
-//     meanwhile: full report → game cards
+//     meanwhile: full report → classics adapted to the room + AI experiment cards (in parallel)
 //   host answers → matching cards shown instantly
 //     meanwhile: rounds for those games, while the host reads and picks
 import { randomUUID } from 'node:crypto';
@@ -8,6 +8,7 @@ import { segment } from './meta.js';
 import { checkLocation } from './location.js';
 import { readRoom } from './room.js';
 import { designCards, designRounds, pickGames } from './games.js';
+import { adaptClassics } from './classics.js';
 
 const scans = new Map();
 const TTL_MS = 60 * 60 * 1000;
@@ -47,13 +48,19 @@ export async function startScan(imageDataUrl) {
   scan.status = 'awaiting_players';
   scan.question = headCountQuestion(scan.peopleSeen);
 
-  // Background, not awaited: full report, then game cards.
+  // Background, not awaited: full report, then classics and experiments side by side.
   scan.ready = (async () => {
     scan.report = await readRoom(imageDataUrl, { personBoxes: people.objects.map(o => o.box) });
     scan.mark('report_ready');
     const caution = location.verdict === 'caution' ? location.suggestion : '';
-    scan.cards = (await designCards(scan.report, { peopleSeen: scan.peopleSeen, caution })).games;
-    scan.mark('cards_ready');
+    const [classics, experiments] = await Promise.all([
+      adaptClassics(scan.report).then(r => { scan.mark('classics_ready'); return r.games; }),
+      // Experiments are optional: if invention fails, the classics still work.
+      designCards(scan.report, { peopleSeen: scan.peopleSeen, caution })
+        .then(r => { scan.mark('experiments_ready'); return r.games.map(g => ({ ...g, kind: 'experiment' })); })
+        .catch(() => []),
+    ]);
+    scan.cards = [...classics, ...experiments];
   })().catch(err => { scan.error = err.message; scan.mark('failed'); });
 
   return publicView(scan);
@@ -75,14 +82,14 @@ export async function answerPlayers(id, { players, seated = 0 }) {
   if (!games.length) {
     // Rare: nothing fits. Design cards for this exact group instead.
     const exact = await designCards(scan.report, { peopleSeen: players - 1 });
-    games = pickGames(exact.games, { players, seated });
+    games = pickGames(exact.games.map(g => ({ ...g, kind: 'experiment' })), { players, seated });
     fallback = true;
   }
 
   scan.status = 'games_ready';
   scan.players = players;
   scan.shown = games;
-  games.forEach((card, index) => roundsFor(scan, index)); // warm up while the host reads
+  games.forEach((card, index) => card.kind === 'experiment' && roundsFor(scan, index)); // warm up while the host reads
 
   return {
     games,
@@ -98,7 +105,14 @@ export async function answerPlayers(id, { players, seated = 0 }) {
 function roundsFor(scan, index) {
   if (!scan.rounds.has(index)) {
     const card = scan.shown[index];
-    const attempt = () => designRounds(card, scan.report, scan.players);
+    if (card.rounds) return Promise.resolve({ rounds: card.rounds }); // classics come with vetted rounds
+    const attempt = () => designRounds(card, scan.report, scan.players).then(r => ({
+      // Same shape as classics: experiments are judged from the round's last frame.
+      rounds: r.rounds.map(({ photo_check, ...round }) => ({
+        ...round,
+        referee: { type: 'last_frame', sam_prompts: photo_check.sam_prompts, rule: photo_check.rule, look_for: photo_check.what_to_photograph },
+      })),
+    }));
     const job = attempt().catch(attempt).then(r => { scan.mark(`rounds_${index}_ready`); return r; });
     job.catch(() => scan.rounds.delete(index)); // let a later tap try again
     scan.rounds.set(index, job);
