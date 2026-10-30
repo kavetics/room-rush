@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { startScan, getScan, answerPlayers, getGame, shrinkPhoto, extractFrames, refereeRound } from './api.js'
+import { startScan, getScan, answerPlayers, getGame, shrinkPhoto } from './api.js'
 import Round from './Round.jsx'
+import Camera from './Camera.jsx'
+import { askMotionPermission } from './sweep.js'
 import './App.css'
 
 const VERDICT = {
@@ -18,7 +20,8 @@ const LAYERS = [
 
 export default function App() {
   const [screen, setScreen] = useState('home')
-  const [photoUrl, setPhotoUrl] = useState(null)
+  const [frameUrls, setFrameUrls] = useState([])
+  const [spotted, setSpotted] = useState({}) // live labels from the sweep // kept for the highlight reel later
   const [scan, setScan] = useState(null)
   const [players, setPlayers] = useState(4)
   const [seated, setSeated] = useState(0)
@@ -36,20 +39,24 @@ export default function App() {
     return () => clearInterval(timer)
   }, [scan?.id, scan?.gamesReady, scan?.error, screen])
 
-  async function onPhoto(event) {
+  function onPhotoFile(event) {
     const file = event.target.files?.[0]
     event.target.value = ''
-    if (!file) return
+    if (file) shrinkPhoto(file).then(small => onScan({ frames: [small] }))
+  }
+
+  async function onScan({ frames, views, labels = {} }) {
     setError(null)
     setResult(null)
     setGame(null)
     setScreen('checking')
     setClock({ start: Date.now(), answeredAt: 0 })
     try {
-      // Show exactly the image the AI analyzes, so the outlines line up with it.
-      const small = await shrinkPhoto(file)
-      setPhotoUrl(URL.createObjectURL(small))
-      const first = await startScan(small)
+      // Show exactly the frames the AI analyzes, so the outlines line up with them.
+      frameUrls.forEach(u => URL.revokeObjectURL(u))
+      setFrameUrls(frames.map(f => URL.createObjectURL(f)))
+      setSpotted(labels)
+      const first = await startScan(frames, views)
       setScan(first)
       setPlayers(Math.max(first.peopleSeen + 1, 2))
       setSeated(0)
@@ -85,38 +92,57 @@ export default function App() {
   // Opening a round switches to the round screen.
   useEffect(() => { if (playing) setScreen('round') }, [playing])
 
-  const snap = () => fileInput.current?.click()
+  const snap = () => setScreen('scan')
+  const upload = () => fileInput.current?.click()
 
   return (
     <div className="app">
-      <input ref={fileInput} type="file" accept="image/*" capture="environment" hidden onChange={onPhoto} />
+      <input ref={fileInput} type="file" accept="image/*" hidden onChange={onPhotoFile} />
 
       {screen === 'home' && (
         <main className="home">
           <h1>Room Rush</h1>
-          <p className="tagline">Party gone flat? Snap the room. We'll turn it into a game show.</p>
-          <button className="primary big" onClick={snap}>📸 Snap the room</button>
-          <p className="meta">Use the normal 1× lens (not 0.5×) and step back to fit the whole space.</p>
+          <p className="tagline">Party gone flat? Scan the room. We'll turn it into a game show.</p>
+          <section className="card consent">
+            <h2>Before you play</h2>
+            <ul>
+              <li><span>🎥</span><p><strong>We film the room and the players.</strong> Make sure everyone on camera is OK with it.</p></li>
+              <li><span>🛟</span><p><strong>Play safe.</strong> Clear the floor, use soft things only, and stay away from lamps, TVs and anything breakable. Stop if anyone feels unsafe.</p></li>
+              <li><span>🤖</span><p><strong>Meta AI reads your photos and clips</strong> to set up the game and referee it. Room Rush doesn't save them.</p></li>
+            </ul>
+          </section>
+          <button className="primary big" onClick={() => { askMotionPermission(); snap() }}>Got it, let's play!</button>
         </main>
       )}
 
-      {screen !== 'home' && (
+      {screen === 'scan' && (
+        <Camera
+          title="Scan your room"
+          hint="Stand in the middle of the room, where you'll play. Tap Start, then turn slowly to the right when told. We'll scan all the way around, then the ceiling."
+          onCapture={onScan}
+          onBack={() => setScreen('home')}
+          onUpload={upload}
+        />
+      )}
+
+      {screen !== 'home' && screen !== 'scan' && (
         <header className="topbar">
           <button className="link" onClick={() => setScreen('home')}>Room Rush</button>
-          <button className="link" onClick={snap}>New photo</button>
+          <button className="link" onClick={snap}>New scan</button>
         </header>
       )}
 
       {screen === 'checking' && (
         <main>
-          <Photo url={photoUrl} />
-          <Status text="Checking if this is a safe place to play…" />
+          <Frames urls={frameUrls} />
+          <Status text="Reading your room…" />
+          <Spotted labels={spotted} />
         </main>
       )}
 
       {screen === 'unsafe' && (
         <main>
-          <Photo url={photoUrl} />
+          <Frames urls={frameUrls} />
           <Verdict location={scan.location} />
           <button className="primary" onClick={snap}>📸 Try another spot</button>
         </main>
@@ -124,7 +150,7 @@ export default function App() {
 
       {screen === 'count' && (
         <main>
-          <Photo url={photoUrl} report={scan.report} />
+          <Frames urls={frameUrls} report={scan.report} />
           <Verdict location={scan.location} />
           <section className="card">
             <h2>{scan.question}</h2>
@@ -139,7 +165,7 @@ export default function App() {
 
       {screen === 'loading-games' && (
         <main>
-          <Photo url={photoUrl} report={scan.report} />
+          <Frames urls={frameUrls} report={scan.report} />
           <Status text="Finishing your games…" />
           <Progress scan={scan} />
         </main>
@@ -176,8 +202,8 @@ export default function App() {
             )
           })}
           <details className="card">
-            <summary>What the AI saw</summary>
-            <Photo url={photoUrl} report={scan.report} />
+            <summary>What the AI saw{frameUrls.length > 1 ? ` (${frameUrls.length} frames)` : ''}</summary>
+            <Frames urls={frameUrls} report={scan.report} />
             <p className="meta">{scan.report?.scene}</p>
           </details>
         </main>
@@ -229,9 +255,30 @@ export default function App() {
   )
 }
 
-function Photo({ url, report }) {
-  const [size, setSize] = useState(null)
+// The scan's frames, one at a time, with thumbnails to switch between them.
+function Frames({ urls, report }) {
+  const [index, setIndex] = useState(0)
   const [hidden, setHidden] = useState({})
+  const i = Math.min(index, urls.length - 1)
+  if (!urls.length) return null
+  return (
+    <div className="frames">
+      <Photo url={urls[i]} report={report} frame={i} hidden={hidden} setHidden={setHidden} />
+      {urls.length > 1 && (
+        <div className="thumbs">
+          {urls.map((u, n) => (
+            <button key={u} className={n === i ? 'on' : ''} onClick={() => setIndex(n)} aria-label={`Frame ${n + 1}`}>
+              <img src={u} alt="" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Photo({ url, report, frame, hidden, setHidden }) {
+  const [size, setSize] = useState(null)
   if (!url) return null
   return (
     <div className="photo-wrap">
@@ -241,7 +288,7 @@ function Photo({ url, report }) {
           <svg viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="none">
             {LAYERS.filter(l => !hidden[l.key]).map(layer =>
               (layer.key === 'people' ? [{ name: 'person', boxes: report.people }] : report[layer.key]).flatMap(item =>
-                item.boxes.map((b, i) => (
+                (item.boxes[frame] ?? []).map((b, i) => (
                   <g key={`${layer.key}-${item.name}-${i}`} className={layer.className}>
                     <rect x={b.x1} y={b.y1} width={b.x2 - b.x1} height={b.y2 - b.y1} />
                     {i === 0 && <Label box={b} text={shortLabel(item.name)} imageWidth={size.w} />}
@@ -315,6 +362,17 @@ function Progress({ scan }) {
       {steps.map(([label, done]) => <li key={label} className={done ? 'done' : ''}>{done ? '✓' : '…'} {label}</li>)}
       {scan.error && <li className="failed">✗ {scan.error}</li>}
     </ul>
+  )
+}
+
+// Labels SAM spotted during the sweep, shown while the full report is built.
+function Spotted({ labels }) {
+  const list = Object.entries(labels)
+  if (!list.length) return null
+  return (
+    <div className="spotted static">
+      {list.map(([label, l]) => <span key={label} className={`spot ${l.hazard ? 'hazard' : ''}`}>{label}{l.count > 1 ? ` ×${l.count}` : ''}</span>)}
+    </div>
   )
 }
 

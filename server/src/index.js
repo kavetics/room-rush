@@ -7,6 +7,7 @@ import { readRoom } from './room.js';
 import { referee } from './referee.js';
 import { startScan, getScan, answerPlayers, getRounds, getRound } from './scan.js';
 import { refereeRound } from './roundReferee.js';
+import { lookAtFrame } from './look.js';
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -26,8 +27,21 @@ app.post('/api/room', upload.single('photo'), async (req, res, next) => {
 });
 
 // Fast path: location check + head-count question. Report and games continue in the background.
-app.post('/api/scan', upload.single('photo'), async (req, res, next) => {
-  try { res.json(await startScan(photoFrom(req))); } catch (err) { next(err); }
+// Takes 1–10 frames: one photo, or the photos from a guided scan (8 around the room + the ceiling).
+app.post('/api/scan', upload.array('frames', 10), async (req, res, next) => {
+  try {
+    if (!req.files?.length) throw Object.assign(new Error('Attach the scan as "frames".'), { status: 400 });
+    const views = req.body.views ? JSON.parse(req.body.views) : undefined;
+    res.json(await startScan(req.files.map(f => toDataUrl(f.buffer, f.mimetype)), { views }));
+  } catch (err) { next(err); }
+});
+
+// Live labels during the sweep: one frame, quick SAM look. Not tied to a scan yet.
+app.post('/api/look', upload.single('frame'), async (req, res, next) => {
+  try {
+    if (!req.file) throw Object.assign(new Error('Attach a frame as "frame".'), { status: 400 });
+    res.json(await lookAtFrame(toDataUrl(req.file.buffer, req.file.mimetype)));
+  } catch (err) { next(err); }
 });
 
 app.get('/api/scan/:id', (req, res) => {

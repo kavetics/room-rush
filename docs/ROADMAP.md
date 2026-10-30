@@ -8,6 +8,9 @@ Things Room Rush could do beyond the hackathon demo. These are **not built**; th
 - **More classics.** Grow the curated library beyond the first four, each with its own tested referee check.
 - **Themed packs.** Halloween, birthdays, office icebreakers, family reunions, kids' parties.
 
+## Plan ahead
+- **Party plan mode.** Planning a backyard BBQ (or any gathering)? Snap the space days ahead. Room Rush suggests games that fit it, lists the props each game needs, and finds them to buy or rent nearby on **Facebook Marketplace**. Builds on today's read-the-room report and prop checks. Depends on Marketplace search access, which has no public API today, so it would need a Meta partnership or a Muse connector.
+
 ## Play together
 - **Multiple phones.** Friends join from their own phones with a link; scores and turns stay in sync.
 - **Room Rush inside group chats.** "Hey Muse, this party's dead" in WhatsApp, Messenger or Instagram, with the game running right there.

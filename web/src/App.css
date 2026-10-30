@@ -126,3 +126,87 @@ figcaption .moving { color: var(--stop); font-weight: 700; }
 .key { padding: 0 6px; border-radius: 6px; font-weight: 700; color: #0f0b1e; }
 .key.before { background: #8a84a3; } .key.still { background: #3ddc84; } .key.moving { background: #ff4d4d; } .key.ignored { border: 1px dashed #8a84a3; color: var(--muted); }
 .evidence { font-size: 0.75rem; background: var(--bg); border-radius: 10px; padding: 10px; overflow-x: auto; white-space: pre-wrap; }
+
+/* Screen 1: consent */
+.consent ul { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 10px; }
+.consent li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; align-items: start; }
+.consent li > span { font-size: 1.3rem; line-height: 1.4; }
+.consent li p { margin: 0; }
+
+/* Screen 2: in-app camera. The video fills the whole screen; controls float on top. */
+.camera { position: fixed; inset: 0; z-index: 10; background: #000; color: #fff; overflow: hidden; }
+.camera-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.camera-flash { position: absolute; inset: 0; background: #fff; opacity: 0.6; pointer-events: none; }
+.camera-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; margin: 0; font-weight: 600; }
+.camera-top { position: absolute; top: 0; left: 0; right: 0; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; text-align: center; font-weight: 700;
+  padding: max(env(safe-area-inset-top), 10px) 16px 24px; background: linear-gradient(rgba(0,0,0,0.55), transparent); text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.camera-icon { width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(0,0,0,0.35); color: #fff; font-size: 1.3rem; backdrop-filter: blur(6px); }
+.camera-icon.on { background: rgba(255,255,255,0.3); }
+.camera-bottom { position: absolute; bottom: 0; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 40px 16px max(env(safe-area-inset-bottom), 16px); background: linear-gradient(transparent, rgba(0,0,0,0.7) 40%); }
+.camera-hint { margin: 0; text-align: center; font-size: 0.95rem; max-width: 420px; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.camera-hint.tip { color: #ffc94d; font-weight: 700; }
+.camera-upload { color: #fff; text-align: center; font-size: 0.85rem; opacity: 0.85; }
+.shutter { width: 84px; height: 84px; border-radius: 50%; border: 5px solid #fff; background: var(--accent); color: #fff; font-weight: 800; letter-spacing: 0.05em; box-shadow: 0 0 0 4px rgba(0,0,0,0.6) inset;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
+.shutter:disabled { opacity: 0.4; }
+.shutter-wrap { position: relative; width: 124px; height: 124px; display: flex; align-items: center; justify-content: center; }
+.shutter.recording { background: #ff3b30; transform: scale(0.9); }
+.rec-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; margin-right: 6px; animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: 0.3; } }
+.camera-banner { position: absolute; top: calc(max(env(safe-area-inset-top), 10px) + 60px); left: 50%; transform: translateX(-50%); margin: 0; padding: 6px 14px; border-radius: 999px; font-weight: 800; }
+.camera-banner.warn { background: #ffc94d; color: #000; }
+
+/* Scanner look: brackets, faint mesh, sweeping line */
+.scanner { position: absolute; inset: 0; pointer-events: none; }
+.scanner-mesh { position: absolute; inset: 0; opacity: 0.18;
+  background-image: linear-gradient(rgba(61,220,132,0.9) 1px, transparent 1px), linear-gradient(90deg, rgba(61,220,132,0.9) 1px, transparent 1px);
+  background-size: 48px 48px; transition: opacity 0.4s; }
+.is-scanning .scanner-mesh { opacity: 0.32; animation: mesh 6s linear infinite; }
+@keyframes mesh { to { background-position: 48px 0; } }
+.bracket { position: absolute; width: 44px; height: 44px; border: 4px solid rgba(255,255,255,0.9); }
+.bracket.tl { top: 16%; left: 8%; border-right: 0; border-bottom: 0; border-radius: 12px 0 0 0; }
+.bracket.tr { top: 16%; right: 8%; border-left: 0; border-bottom: 0; border-radius: 0 12px 0 0; }
+.bracket.bl { bottom: 34%; left: 8%; border-right: 0; border-top: 0; border-radius: 0 0 0 12px; }
+.bracket.br { bottom: 34%; right: 8%; border-left: 0; border-top: 0; border-radius: 0 0 12px 0; }
+.is-scanning .bracket { border-color: #3ddc84; }
+.scan-line { position: absolute; left: 0; right: 0; height: 90px; top: 0;
+  background: linear-gradient(transparent, rgba(61,220,132,0.35) 85%, #3ddc84 100%);
+  box-shadow: 0 2px 14px #3ddc84; animation: scanline 2.2s ease-in-out infinite; }
+@keyframes scanline { 0% { transform: translateY(-90px); } 100% { transform: translateY(100vh); } }
+
+/* Target: line the dot up with the ring and hold still; the ring fills as you hold */
+.reticle-wrap { position: absolute; top: 45%; left: 50%; width: 0; height: 0; pointer-events: none; }
+.reticle { position: absolute; width: 84px; height: 84px; left: -42px; top: -42px; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.9);
+  background: conic-gradient(rgba(61,220,132,0.55) calc(var(--hold) * 360deg), transparent 0); }
+.reticle.aligned { border-color: #3ddc84; box-shadow: 0 0 18px #3ddc84; }
+.tilt-up { position: absolute; left: -9px; bottom: 24px; width: 40px; text-align: center; font-size: 2.2rem; font-weight: 800; color: #ffc94d; text-shadow: 0 2px 8px rgba(0,0,0,0.6); animation: nudge-up 1s ease-in-out infinite; }
+@keyframes nudge-up { 50% { transform: translateY(-12px); } }
+.target-dot { position: absolute; width: 22px; height: 22px; left: -11px; top: -11px; border-radius: 50%; background: #ffc94d; box-shadow: 0 0 10px rgba(0,0,0,0.5); transition: transform 0.1s linear; }
+
+.scan-progress { position: absolute; top: calc(max(env(safe-area-inset-top), 10px) + 52px); left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 6px; }
+.scan-progress span { width: 22px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.35); }
+.scan-progress span.done { background: #3ddc84; }
+.scan-progress span.now { background: #fff; animation: blink 1s infinite; }
+.scan-progress .ceiling { width: auto; height: auto; background: none !important; font-weight: 800; font-size: 0.9rem; color: rgba(255,255,255,0.5); }
+.scan-progress .ceiling.done { color: #3ddc84; } .scan-progress .ceiling.now { color: #fff; }
+.camera-toast { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); margin: 0; padding: 8px 16px; border-radius: 999px; background: rgba(61,220,132,0.95); color: #04140a; font-weight: 800; animation: pop 0.25s ease-out; }
+.scan-actions { min-height: 44px; display: flex; align-items: center; }
+.secondary-dark { background: rgba(0,0,0,0.45); color: #fff; border: 2px solid rgba(255,255,255,0.8); border-radius: 999px; padding: 10px 18px; font-weight: 700; backdrop-filter: blur(6px); }
+.shutter { line-height: 1.1; font-size: 0.8rem; }
+
+/* Live labels: what SAM spotted so far */
+.spotted { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 460px; }
+.spot { background: rgba(255,255,255,0.92); color: #111; border-radius: 999px; padding: 4px 10px; font-size: 0.85rem; font-weight: 700; animation: pop 0.35s ease-out; }
+.spot.hazard { background: #ffc94d; }
+@keyframes pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.spotted.static { justify-content: flex-start; }
+.spotted.static .spot { background: var(--card); color: var(--text); border: 1px solid var(--border); animation: none; }
+.spotted.static .spot.hazard { border-color: var(--warn); }
+
+/* Scan frames */
+.thumbs { display: flex; gap: 6px; overflow-x: auto; margin-top: 8px; padding-bottom: 4px; }
+.thumbs button { flex: 0 0 56px; height: 42px; padding: 0; border: 2px solid transparent; border-radius: 8px; overflow: hidden; background: none; opacity: 0.6; }
+.thumbs button.on { border-color: var(--accent); opacity: 1; }
+.thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }

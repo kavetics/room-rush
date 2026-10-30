@@ -1,4 +1,4 @@
-// One scan per photo. Each step starts as early as possible and hides behind something the host is doing:
+// One scan per room: a photo, or the photos from a guided scan (8 around the room + the ceiling). Each step starts as early as possible and hides behind something the host is doing:
 //   photo → location check + people count (~3 s) → host counts heads
 //     meanwhile: full report → classics adapted to the room + AI experiment cards (in parallel)
 //   host answers → matching cards shown instantly
@@ -23,7 +23,8 @@ function headCountQuestion(peopleSeen) {
 const notFound = () => Object.assign(new Error('Scan not found or expired.'), { status: 404 });
 
 /** Returns as soon as the location check and people count are done. */
-export async function startScan(imageDataUrl) {
+export async function startScan(images, { views } = {}) {
+  images = [].concat(images);
   const id = randomUUID();
   const started = Date.now();
   const scan = { id, started, status: 'checking', events: [], rounds: new Map() };
@@ -31,9 +32,9 @@ export async function startScan(imageDataUrl) {
   setTimeout(() => scans.delete(id), TTL_MS).unref();
   scan.mark = event => scan.events.push({ event, atMs: Date.now() - started });
 
-  const [location, people] = await Promise.all([
-    checkLocation(imageDataUrl),
-    segment(imageDataUrl, 'person').catch(() => ({ count: 0, objects: [] })),
+  const [location, personBoxes] = await Promise.all([
+    checkLocation(images, { views }),
+    Promise.all(images.map(img => segment(img, 'person').then(r => r.objects.map(o => o.box)).catch(() => []))),
   ]);
   scan.mark('location_checked');
   scan.location = location;
@@ -50,7 +51,7 @@ export async function startScan(imageDataUrl) {
 
   // Background, not awaited: full report, then classics and experiments side by side.
   scan.ready = (async () => {
-    scan.report = await readRoom(imageDataUrl, { personBoxes: people.objects.map(o => o.box) });
+    scan.report = await readRoom(images, { personBoxes, views });
     scan.mark('report_ready');
     const caution = location.verdict === 'caution' ? location.suggestion : '';
     const [classics, experiments] = await Promise.all([
@@ -156,12 +157,13 @@ function publicView(scan) {
     reportReady: Boolean(scan.report),
     gamesReady: Boolean(scan.cards),
     peopleNotes: scan.report?.people.notes ?? [],
-    // What the AI saw, so the UI can draw it on the photo.
+    // What the AI saw, so the UI can draw it on each frame.
     report: scan.report && {
       scene: scan.report.scene,
       setting: scan.report.setting,
       spaceSize: scan.report.spaceSize,
-      people: scan.report.people.boxes,
+      frames: scan.report.frames,
+      people: scan.report.people.boxes, // boxes per frame
       props: scan.report.props.map(({ name, count, boxes }) => ({ name, count, boxes })),
       fixtures: scan.report.fixtures.map(({ name, count, boxes, allowed_actions }) => ({ name, count, boxes, allowed_actions })),
       hazards: scan.report.hazards.map(({ name, count, boxes, fix }) => ({ name, count, boxes, fix })),

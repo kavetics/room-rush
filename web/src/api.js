@@ -6,10 +6,19 @@ async function json(res) {
   return data;
 }
 
-export async function startScan(photoBlob) {
+// One photo, or the photos from a guided scan. views says which way each one faces ('side' | 'ceiling').
+export async function startScan(frames, views = frames.map(() => 'side')) {
   const body = new FormData();
-  body.append('photo', photoBlob, 'room.jpg');
+  frames.forEach((blob, i) => body.append('frames', blob, `room-${i}.jpg`));
+  body.append('views', JSON.stringify(views));
   return json(await fetch('/api/scan', { method: 'POST', body }));
+}
+
+// Live labels while scanning: a quick SAM look at one sweep frame.
+export async function lookAtFrame(blob) {
+  const body = new FormData();
+  body.append('frame', blob, 'frame.jpg');
+  return json(await fetch('/api/look', { method: 'POST', body }));
 }
 
 export async function getScan(id) {

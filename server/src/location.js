@@ -1,6 +1,7 @@
-// Step 1 after a photo: is this a safe place to play? Small, fast Muse Spark call.
+// Step 1 after the scan (one photo or several frames from a sweep): is this a safe place to play? Small, fast Muse Spark call.
 // Plain code has the final say on location types that are never safe.
 import { sparkJSON } from './meta.js';
+import { describeViews } from './views.js';
 
 const LOCATION_TYPES = [
   'home_indoor', 'backyard', 'park_or_field', 'cul_de_sac', 'driveway', 'other_open_space',
@@ -23,11 +24,15 @@ const LOCATION_SCHEMA = {
   },
 };
 
-export async function checkLocation(imageDataUrl) {
+export async function checkLocation(images, { views } = {}) {
+  images = [].concat(images);
   const { result, ms } = await sparkJSON({
     system: 'You decide whether a place is safe for an active party game. Streets, roads, railroad tracks, parking lots, construction sites, water edges, rooftops and balconies are never safe, even if they look empty right now.',
-    prompt: 'Is this a safe place to play an active party game?',
-    images: [imageDataUrl],
+    prompt: [
+      'Is this a safe place to play an active party game?',
+      images.length > 1 && `${describeViews(images.length, views)} Judge the whole space, and count each real person once even if they appear in several photos.`,
+    ].filter(Boolean).join('\n'),
+    images,
     schemaName: 'location_check',
     schema: LOCATION_SCHEMA,
   });

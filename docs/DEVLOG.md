@@ -110,3 +110,32 @@ Ground truth (checked frame by frame): dancing 1.0–5.5 s, frozen 6.0–8.0 s, 
 - Referee needs distance measurements ("closest pillow to the sofa")
 - Games must respect prop counts (2 pillows can't serve 4 players)
 - Test photos with people, outdoors, and unsafe locations
+
+---
+
+## Fri Oct 30: New plan, in-app camera
+**Decisions**
+- **One game first: Clap Catch.** New UI flow from the owner's sketches: consent → scan → reading → confirm → games → rules → referee mode (player x of y) → podium → share. Freeze Dance stays as the backup.
+- **Own in-app camera** instead of the iPhone camera app. *Why:* we control the lens and zoom, and later get the audio and video as they're recorded (no slow frame pulling).
+- **Room scan is a hold-to-record sweep** (owner's call). The phone compass tracks coverage and keeps one frame per 45° of turning (max 8); the video is kept for the reel. *Why one frame per direction:* a sweep shows the same couch many times, so each item's count is its highest count in any single frame, never the sum.
+
+**Done**
+- HTTPS on the LAN link (self-signed, `@vitejs/plugin-basic-ssl`); the iPhone camera requires it
+- Camera: picks the 1× "Back Camera" lens, zoom limited to 1–2× (lens zoom if supported, else center crop), 4:3, grid, preview matches the photo exactly
+- Screen ① consent + play safe, screen ② scan; capture feeds the existing read-the-room pipeline
+- Hold-to-scan: coverage ring, "slow down" warning, min 2 s / max 30 s, timer fallback without a compass
+- Server reads the room from 1–8 frames: Muse Spark lists which frames each item is in, SAM counts it only there (3 frames: report in 16 s vs ~8 s for one photo, hidden behind the head-count question)
+- Verified in headless Chrome with a fake camera and a simulated 360° turn (8 frames, 100% coverage, end to end); iPhone test pending
+- **Live labels while scanning:** each sweep frame gets a quick SAM 3.1 look for 10 party-relevant things (person, ball, pillow, couch, chair, table, lamp, TV, ceiling fan, staircase), all in parallel (~1.5–2 s per frame). Labels pop up as the host turns; hazards in yellow. *Why a fixed list:* SAM finds what you name but can't name things itself; Muse Spark's report stays the source of truth.
+- Camera is now full screen and always 1× (zoom buttons removed).
+
+**Learned**
+- SAM prompt wording matters: "stairs" scored 0.55 on a clear staircase, "staircase" 0.70.
+
+### Guided scan (replaces the hold-to-record sweep)
+- **Decision (owner's design):** no video. The host stands in the middle of the room, taps Start, and is guided to 8 directions (every 45°, turning right) plus one ceiling shot. *Why:* photos taken while still are sharp, coverage is predictable, and the ceiling shot catches overhead hazards (fans, chandeliers) that matter for throwing games.
+- Photos are taken automatically when the phone is lined up (compass) and still for 0.4 s: a target dot and ring show where to turn; timed prompts if there's no compass. "Done turning" after 4 shots, "Skip ceiling".
+- Scanner look: corner brackets, moving mesh, sweeping scan line, progress pips, "Got it ✓ 3 of 8".
+- Muse Spark is told how the photos relate (one spot, turning right, frame 8 = ceiling) and to check overhead hazards.
+- Verified with a simulated phone turning through the real room photos: 8 sides + ceiling captured, live labels (couch ×2, lamp, stairs, ball, pillow ×2, table), full flow to the head-count question. iPhone test pending.
+- **Ceiling guide fixed** (owner report: "doesn't really work"). Two bugs: the dot sat *below* the ring (following it meant tilting down), and the "hold still" check counted compass swings, which jump around when the phone points up, so the photo never fired. Now: dot above the ring with a bouncing ↑, only tilt counts for the ceiling, 30° up is enough, and "still" = moved less than 5° over the last 0.3 s (robust to sensor jitter). Simulated with hand wobble: fires 0.5–1.3 s after lining up.
