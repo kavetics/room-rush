@@ -31,6 +31,8 @@ Flow: ① consent → ② scan (in-app camera) → ③ reading your room → ④
 - [ ] Test deploy (Render + Vercel); others hit "model_not_found" on Render
 - [ ] Fix "Caution" on every indoor room
 - [ ] Retest Freeze Dance frame pulling on iPhone (backup game)
+- [ ] Saved rooms: reuse a room's report without rescanning. On the phone only, with a delete button; on reopening, show the photo and hazards and ask "Still look like this?", with Rescan. Suggest a rescan after about 30 days.
+- [ ] Metrics: anonymous game events in Supabase, 👍/👎 on referee calls and clap counts, `npm run metrics` summary. Numbers only: no videos, sound, names or IP addresses. Add a line to the consent screen.
 
 ## Weekend (Sat Oct 31 – Sun Nov 1)
 - [ ] Build Clap Catch into the app (if the test passes)

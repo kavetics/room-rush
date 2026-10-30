@@ -182,3 +182,6 @@ Exact clap count on 10 of 11 caught turns (1, 2, 3 claps; claps after the catch 
 - Setup screen (1–8 players, names, 1/3/5 rounds), turn order, scoreboard between rounds, final standings with every turn's report, Play again. Total claps with clean catches decides; catches break ties. Turn-based, so the player cap is about patience, not technology.
 - Muse Spark now judges only the person throwing, since others may be in the shot at a party.
 - Hosting: one Render service serves both the API and the built app (`render.yaml`).
+
+### Meta API 404 on hosted servers
+Render gets 404 model_not_found from Muse Spark while the same key works from the Mac. Per the hackathon Discord, Meta confirmed it isn't caused by builders and is investigating a likely entitlement caching issue. Added retries (3, with growing pauses) for 404s only, because the error can clear up on its own. This won't fix Render if every call fails; open a support ticket and report it in the partner feedback.

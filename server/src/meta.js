@@ -7,22 +7,33 @@ export const MODELS = {
   image: 'muse-image-1.0',
 };
 
+// Meta's API can briefly answer 404 model_not_found for a valid model (a known issue on their side),
+// then recover with the same request. Other errors are real, so they fail right away.
+const MODEL_RETRY_DELAYS_MS = [500, 1000, 2000];
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 async function post(path, body) {
   const started = Date.now();
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.MODEL_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok || data.error) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.MODEL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (res.ok && !data.error) return { data, ms: Date.now() - started };
+
     const msg = data.error?.message || res.statusText;
+    if (res.status === 404 && attempt < MODEL_RETRY_DELAYS_MS.length) {
+      console.warn(`Meta API ${path}: 404 for ${body.model}, retry ${attempt + 1} of ${MODEL_RETRY_DELAYS_MS.length}`);
+      await sleep(MODEL_RETRY_DELAYS_MS[attempt] * (0.75 + Math.random() / 2));
+      continue;
+    }
     throw new Error(`Meta API ${path} failed (${res.status}): ${msg}`);
   }
-  return { data, ms: Date.now() - started };
 }
 
 export function toDataUrl(buffer, mime = 'image/jpeg') {
