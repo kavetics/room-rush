@@ -273,3 +273,19 @@ figcaption .moving { color: var(--stop); font-weight: 700; }
 .turn-tally { margin: 10px 0 0; font-size: 1.1rem; opacity: 0.9; }
 .test-final { margin: 0; font-size: 1.5rem; font-weight: 800; text-align: center; }
 .test-controls { width: 100%; max-width: 420px; }
+
+/* Clap Catch setup and scoreboard */
+.name-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 12px; }
+.name-list input { min-width: 0; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: inherit; font: inherit; font-size: 16px; }
+.round-choice { display: flex; gap: 8px; }
+.round-choice button { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: inherit; font-weight: 700; }
+.round-choice button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.standings { list-style: none; padding: 0 !important; margin: 8px 0 0; }
+.standings li { display: grid; grid-template-columns: 24px 1fr auto; column-gap: 8px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--border); }
+.standings li:first-child { border-top: 0; }
+.standings .meta { grid-column: 2; grid-row: 2; font-size: 0.82rem; }
+.standings .total { grid-column: 3; grid-row: 1; font-weight: 800; }
+.standings .rank { color: var(--muted); font-weight: 800; }
+.standings .standings-note { display: block; border-top: 0; }
+.turn-row { padding: 8px 0; border-top: 1px solid var(--border); }
+.turn-row summary { font-weight: 600; cursor: pointer; }

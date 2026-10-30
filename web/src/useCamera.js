@@ -13,6 +13,7 @@ const isMainBackLens = label => /^back camera$/i.test(label) ||
 
 // Tell the Mac what the camera is doing, since nobody there can see the phone's screen.
 export function report(message) {
+  if (!import.meta.env.DEV) return
   fetch('/api/client-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) }).catch(() => {})
 }
 if (import.meta.env.DEV) {

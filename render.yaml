@@ -1,0 +1,18 @@
+# One web service: the Express API also serves the built React app.
+services:
+  - type: web
+    name: room-rush
+    runtime: node
+    plan: free
+    buildCommand: cd web && npm ci --include=dev && npm run build && cd ../server && npm ci
+    startCommand: cd server && node src/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MODEL_API_KEY
+        sync: false # paste it in the Render dashboard; never commit it
+      - key: META_API_BASE_URL
+        value: https://api.meta.ai/v1
+      - key: SPARK_EFFORT
+        value: low

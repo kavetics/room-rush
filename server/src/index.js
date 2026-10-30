@@ -127,6 +127,13 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
+// In production this one server also hosts the built web app, so everything lives at one https link.
+if (process.env.NODE_ENV === 'production') {
+  const web = new URL('../../web/dist/', import.meta.url).pathname;
+  app.use(express.static(web));
+  app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(join(web, 'index.html')));
+}
+
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(err.status || 500).json({ error: err.message });

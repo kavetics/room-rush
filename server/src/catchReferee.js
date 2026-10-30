@@ -27,6 +27,7 @@ const SYSTEM = [
   'You referee a party game. A player throws a small yellow ball up and tries to catch it.',
   'caught: the ball came down into the hands, or was trapped against the body, without touching the floor first.',
   'dropped: the ball touched the floor or was missed. Picking it up afterwards is still dropped.',
+  'Other people may be in the frame: judge only the person who throws the ball.',
   'unclear: the frames do not show enough to decide. Never guess.',
 ].join(' ');
 

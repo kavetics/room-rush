@@ -177,3 +177,8 @@ Ground truth (checked frame by frame): dancing 1.0–5.5 s, frozen 6.0–8.0 s, 
 ### Clap accuracy: first real result
 Exact clap count on 10 of 11 caught turns (1, 2, 3 claps; claps after the catch ignored); all 13 catch calls right, making 33 of 33 across both tests. The one miss: a single quiet clap removed as the sound of the catch. Left untuned: one miss isn't enough to tune on, and the same rule correctly removed a real catch sound in another turn. Quiet room, one player; noise is untested.
 
+
+### Multiple players and rounds
+- Setup screen (1–8 players, names, 1/3/5 rounds), turn order, scoreboard between rounds, final standings with every turn's report, Play again. Total claps with clean catches decides; catches break ties. Turn-based, so the player cap is about patience, not technology.
+- Muse Spark now judges only the person throwing, since others may be in the shot at a party.
+- Hosting: one Render service serves both the API and the built app (`render.yaml`).

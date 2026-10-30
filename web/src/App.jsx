@@ -24,7 +24,7 @@ export default function App() {
   // Accuracy test modes: open the app with ?test=catch (voice, no sound recorded) or ?test=claps
   const test = new URLSearchParams(window.location.search).get('test')
   if (test === 'catch' || test === 'claps') return <CatchTest claps={test === 'claps'} />
-  if (test === 'turn') return <div className="app"><ClapCatch players={1} onBack={() => { window.location.search = '?test=menu' }} /></div>
+  if (test === 'turn') return <div className="app"><ClapCatch players={2} onBack={() => { window.location.search = '?test=menu' }} /></div>
   if (test === 'menu') return <TestMenu />
   return <Game />
 }
@@ -32,7 +32,7 @@ export default function App() {
 // Shortcuts for testing, so nobody has to scan a room first. Open the app with ?test=menu
 function TestMenu() {
   const links = [
-    ['turn', '👏 Real Clap Catch turn', 'Records one turn, then shows the full report with the audio map.'],
+    ['turn', '👏 Play Clap Catch', 'Names, rounds, turns, scoreboard and the full report. No scan.'],
     ['catch', '🗣️ Catch test', '20 throws called out by voice, about 4 minutes. No mic.'],
     ['claps', '🔢 Clap test', '13 throws with the mic on, about 2.5 minutes. Read the screen.'],
   ]
@@ -218,7 +218,7 @@ function Game() {
             <button className="card game" onClick={() => setScreen('clap-catch')}>
               <h3>👏 Clap Catch</h3>
               <p>Throw the ball up, clap as many times as you can, catch it. The AI referee watches and listens to every turn.</p>
-              <p className="meta">1–4 players, one at a time · needs a soft ball</p>
+              <p className="meta">1–8 players, one at a time · needs a soft ball</p>
             </button>
           </section>
           {[
