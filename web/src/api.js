@@ -21,6 +21,47 @@ export async function lookAtFrame(blob) {
   return json(await fetch('/api/look', { method: 'POST', body }));
 }
 
+// Clap Catch: one recorded turn, as frames with their times.
+export async function refereeCatch(frames, envelope, onProgress = () => {}) {
+  const body = new FormData();
+  if (envelope) body.append('envelope', JSON.stringify(envelope));
+  frames.forEach((f, i) => body.append('frames', f.blob, `f${i}.jpg`));
+  body.append('times', JSON.stringify(frames.map(f => f.t)));
+  const res = await fetch('/api/clap-catch/referee', { method: 'POST', body });
+  if (!res.ok) return json(res); // throws with the server's message
+  // The server sends one JSON line per step while it works.
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  let result = null;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines.filter(Boolean)) {
+      const event = JSON.parse(line);
+      if (event.step === 'error') throw new Error(event.error);
+      if (event.step === 'done') result = event.result;
+      else onProgress(event);
+    }
+  }
+  if (!result) throw new Error('The referee stopped before finishing. Try again.');
+  return result;
+}
+
+// Test mode: save one labeled turn.
+export async function saveTestTrial(run, trial, { label, style, claps }, frames, envelope) {
+  const body = new FormData();
+  if (envelope) body.append('envelope', JSON.stringify(envelope));
+  frames.forEach((f, i) => body.append('frames', f.blob, `f${i}.jpg`));
+  body.append('label', label);
+  body.append('style', style);
+  if (claps != null) body.append('claps', claps);
+  body.append('times', JSON.stringify(frames.map(f => f.t)));
+  return json(await fetch(`/api/clap-catch/test/${run}/${trial}`, { method: 'POST', body }));
+}
+
 export async function getScan(id) {
   return json(await fetch(`/api/scan/${id}`));
 }

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { startScan, getScan, answerPlayers, getGame, shrinkPhoto } from './api.js'
 import Round from './Round.jsx'
 import Camera from './Camera.jsx'
+import ClapCatch from './ClapCatch.jsx'
+import CatchTest from './CatchTest.jsx'
 import { askMotionPermission } from './sweep.js'
 import './App.css'
 
@@ -19,6 +21,38 @@ const LAYERS = [
 ]
 
 export default function App() {
+  // Accuracy test modes: open the app with ?test=catch (voice, no sound recorded) or ?test=claps
+  const test = new URLSearchParams(window.location.search).get('test')
+  if (test === 'catch' || test === 'claps') return <CatchTest claps={test === 'claps'} />
+  if (test === 'turn') return <div className="app"><ClapCatch players={1} onBack={() => { window.location.search = '?test=menu' }} /></div>
+  if (test === 'menu') return <TestMenu />
+  return <Game />
+}
+
+// Shortcuts for testing, so nobody has to scan a room first. Open the app with ?test=menu
+function TestMenu() {
+  const links = [
+    ['turn', '👏 Real Clap Catch turn', 'Records one turn, then shows the full report with the audio map.'],
+    ['catch', '🗣️ Catch test', '20 throws called out by voice, about 4 minutes. No mic.'],
+    ['claps', '🔢 Clap test', '13 throws with the mic on, about 2.5 minutes. Read the screen.'],
+  ]
+  return (
+    <div className="app">
+      <main>
+        <h1>Test menu</h1>
+        {links.map(([key, title, about]) => (
+          <a key={key} className="card game test-link" href={`?test=${key}`}>
+            <h3>{title}</h3>
+            <p className="meta">{about}</p>
+          </a>
+        ))}
+        <a className="link" href="/">Full app →</a>
+      </main>
+    </div>
+  )
+}
+
+function Game() {
   const [screen, setScreen] = useState('home')
   const [frameUrls, setFrameUrls] = useState([])
   const [spotted, setSpotted] = useState({}) // live labels from the sweep // kept for the highlight reel later
@@ -180,6 +214,13 @@ export default function App() {
               <ul>{result.beforeYouPlay.map(t => <li key={t}>{t}</li>)}</ul>
             </section>
           )}
+          <section className="game-section">
+            <button className="card game" onClick={() => setScreen('clap-catch')}>
+              <h3>👏 Clap Catch</h3>
+              <p>Throw the ball up, clap as many times as you can, catch it. The AI referee watches and listens to every turn.</p>
+              <p className="meta">1–4 players, one at a time · needs a soft ball</p>
+            </button>
+          </section>
           {[
             { kind: 'classic', title: '🎯 Classics', blurb: 'Proven party games, set up for your room.' },
             { kind: 'experiment', title: '🧪 AI Experiments', blurb: 'Invented by AI just now for this room. Untested, and the referee may be less reliable. Why not try something new?' },
@@ -234,6 +275,8 @@ export default function App() {
           ))}
         </main>
       )}
+
+      {screen === 'clap-catch' && <ClapCatch players={players - seated} onBack={() => setScreen('games')} />}
 
       {screen === 'round' && game && playing && (
         <Round

@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "test:room": "node --env-file=../.env scripts/test-room.js",
     "test:referee": "node --env-file=../.env scripts/test-referee.js",
-    "test:scan": "node --env-file=../.env scripts/test-scan.js"
+    "test:scan": "node --env-file=../.env scripts/test-scan.js",
+    "test:catch": "node --env-file=../.env scripts/test-catch.js"
   },
   "dependencies": {
     "cors": "^2.8.6",

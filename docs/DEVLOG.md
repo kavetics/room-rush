@@ -139,3 +139,41 @@ Ground truth (checked frame by frame): dancing 1.0–5.5 s, frozen 6.0–8.0 s, 
 - Muse Spark is told how the photos relate (one spot, turning right, frame 8 = ceiling) and to check overhead hazards.
 - Verified with a simulated phone turning through the real room photos: 8 sides + ceiling captured, live labels (couch ×2, lamp, stairs, ball, pillow ×2, table), full flow to the head-count question. iPhone test pending.
 - **Ceiling guide fixed** (owner report: "doesn't really work"). Two bugs: the dot sat *below* the ring (following it meant tilting down), and the "hold still" check counted compass swings, which jump around when the phone points up, so the photo never fired. Now: dot above the ring with a bouncing ↑, only tilt counts for the ceiling, 30° up is enough, and "still" = moved less than 5° over the last 0.3 s (robust to sensor jitter). Simulated with hand wobble: fires 0.5–1.3 s after lining up.
+
+### Clap Catch: record a turn + catch referee + test mode
+**Decisions**
+- **Caught or dropped only for now; no scores or winner.** Clap counting is in the backlog (owner's call).
+- **No "hold the pose" rule, so the referee follows the ball through the whole clip:** SAM on every frame (4/sec), code finds the throw's peak and where the ball ended, Muse Spark rules caught, dropped or unclear from up to 12 frames after the peak.
+- **Accuracy test is voice-guided (owner's idea):** one continuous recording, the phone calls out catch or drop, so every turn is labeled automatically and can be re-run as the referee changes.
+
+**Done**
+- Turn screen: player x of y, hold to film or solo (3-2-1, 10 s), review, redo or submit, verdict
+- `?test=catch` (20 throws) saves labeled turns to git-ignored `test-photos/catch-runs`; `npm run test:catch` reports accuracy
+
+**Verified:** full flow with a fake camera; one synthetic falling ball (real ball pasted on a person frame) called "dropped" in 7.3 s. **Not yet tested on any real throw; accuracy unknown.**
+
+**Learned:** SAM ignored a flat painted circle but found the real ball at 0.78 confidence even at about 20 px.
+
+### Clap counting
+- **Back in scope (owner's call):** clap counts decide the winner. Plain code finds sudden loud spikes in the sound and counts those between the throw (from SAM's ball path) and the catch; the spike at the catch is the ball landing. A drop scores 0.
+- `?test=claps`: 13 on-screen-guided turns with the mic on, labeled with the expected count. `npm run test:catch` reports clap accuracy.
+- Verified with math checks and a fake mic. **Not yet tested on real claps or the iPhone mic.**
+
+### "What the AI saw" for Clap Catch
+- **Live while judging:** the referee streams each step (one JSON line each), so the phone shows every frame with SAM's ball box, then the throw, then Muse Spark's call.
+- **Replay after:** the video with the ball outlined, a trail, and throw/clap/catch markers appearing on time; tap a marker to jump. Each player's report stays available at game over.
+- *Why:* it makes the AI's work visible, which serves both the demo and trust in the referee's calls.
+- Report also shows an audio map: the clip's sound with every spike marked, counted as a clap (green) or not (grey), so a clap count can be checked by eye.
+
+### Test menu, camera retry
+- `?test=menu`: direct links to a real turn and both accuracy tests, no scan needed. *Why:* testing kept requiring the whole flow.
+- **Phone reports camera steps to the Mac in dev** (we can't see its screen). It showed iPhone Chrome refusing the camera on page load (NotAllowedError) three times, then allowing it. Added a "Turn on camera" button that asks again from a tap.
+- Tests and Solo use the front camera, so the player can read the screen and see the shot. Hold-to-film stays on the back camera. Voice in the catch test is now pre-recorded clips; browser speech was silent on iPhone.
+- **Test rhythm rebuilt (owner feedback: the pacing was off):** each turn is now task → 3-2-1 → GO with a 6 s timer → the referee checks it live → correct or missed → get the ball → next. Each turn records its own clip, so sound timing matches a real game. Score shows as you go.
+
+### Catch accuracy: first real result
+20 of 20 correct (10 catches, 10 drops), front camera, one player, one room: one hand, against the chest, drop then pick up. Median about 8–9 s per turn; 36 SAM calls and 12 Muse Spark frames per turn. Target was at least 90%, but 20 turns from one person is a small sample, and these were deliberate catches and drops.
+
+### Clap accuracy: first real result
+Exact clap count on 10 of 11 caught turns (1, 2, 3 claps; claps after the catch ignored); all 13 catch calls right, making 33 of 33 across both tests. The one miss: a single quiet clap removed as the sound of the catch. Left untuned: one miss isn't enough to tune on, and the same rule correctly removed a real catch sound in another turn. Quiet room, one player; noise is untested.
+

@@ -1,18 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { SCAN, cameraDirection, turnTo } from './sweep.js'
 import { lookAtFrame } from './api.js'
-
-// Our camera rules. Always the 1× lens at 1× zoom: the ultra-wide's distortion throws off what the AI sees.
-const CAMERA = {
-  // Ask for 4:3, the shape iPhone photos use; the phone picks the closest it supports.
-  width: 1920,
-  height: 1440,
-  frameMaxSide: 1280, // photos sent to the AI
-}
-
-// iPhones list several back cameras; "Back Camera" is the plain 1× lens.
-const isMainBackLens = label => /^back camera$/i.test(label) ||
-  (/back|rear/i.test(label) && !/ultra|wide|tele|dual|triple|front/i.test(label))
+import { grabFrame, useCamera } from './useCamera.js'
 
 const CEILING = SCAN.sides // the step after the 8 side photos
 
@@ -24,12 +13,11 @@ const CEILING = SCAN.sides // the step after the 8 side photos
  * onCapture({ frames: Blob[], views: ('side' | 'ceiling')[], labels, compass })
  */
 export default function Camera({ title, hint, onCapture, onBack, onUpload }) {
-  const video = useRef(null)
-  const stream = useRef(null)
+  const { video, status, error, stop: stopCamera, retry } = useCamera()
   const direction = useRef(null) // { heading, pitch } from the motion sensor
   const scan = useRef(null)
-  const [state, setState] = useState('starting') // starting → ready → scanning → saving | error
-  const [error, setError] = useState(null)
+  const [phase, setPhase] = useState('ready') // ready → scanning → saving
+  const state = status === 'ready' ? phase : status // starting | error | ready | scanning | saving
   const [live, setLive] = useState(null) // the guide right now, for the UI
   const [labels, setLabels] = useState({}) // label → { count, hazard, at }
   const [flash, setFlash] = useState(false)
@@ -37,69 +25,23 @@ export default function Camera({ title, hint, onCapture, onBack, onUpload }) {
 
   function stop() {
     clearInterval(scan.current?.timer)
-    stream.current?.getTracks().forEach(t => t.stop())
-    stream.current = null
+    stopCamera()
   }
 
   useEffect(() => {
-    let cancelled = false
     const onOrientation = e => { direction.current = cameraDirection(e) }
     window.addEventListener('deviceorientation', onOrientation)
-    start().catch(err => {
-      if (cancelled) return
-      setError(cameraError(err))
-      setState('error')
-    })
     return () => {
-      cancelled = true
       window.removeEventListener('deviceorientation', onOrientation)
-      stop()
-    }
-
-    async function start() {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error('insecure')
-      let s = await open({ facingMode: { ideal: 'environment' } })
-      // Device names are only visible after permission is granted, so switch lenses second.
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const main = devices.find(d => d.kind === 'videoinput' && isMainBackLens(d.label))
-      if (main && s.getVideoTracks()[0].getSettings().deviceId !== main.deviceId) {
-        s.getTracks().forEach(t => t.stop())
-        s = await open({ deviceId: { exact: main.deviceId } })
-      }
-      if (cancelled) return s.getTracks().forEach(t => t.stop())
-      stream.current = s
-      const track = s.getVideoTracks()[0]
-      const caps = track.getCapabilities?.() ?? {}
-      if (caps.zoom) await track.applyConstraints({ advanced: [{ zoom: Math.max(caps.zoom.min, 1) }] }).catch(() => {})
-      video.current.srcObject = s
-      await video.current.play()
-      setState('ready')
-    }
-
-    function open(device) {
-      return navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { ...device, width: { ideal: CAMERA.width }, height: { ideal: CAMERA.height } },
-      })
+      clearInterval(scan.current?.timer)
     }
   }, [])
-
-  // One still from the live feed (the whole camera frame), shrunk for upload.
-  function grabFrame() {
-    const v = video.current
-    const scale = Math.min(1, CAMERA.frameMaxSide / Math.max(v.videoWidth, v.videoHeight))
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.round(v.videoWidth * scale)
-    canvas.height = Math.round(v.videoHeight * scale)
-    canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height)
-    return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85))
-  }
 
   // Take the photo for this step and send it for a quick look. Same rule as the report:
   // a thing's count is its highest count in any one photo, never the sum.
   function takeShot(s) {
     const view = s.step === CEILING ? 'ceiling' : 'side'
-    const blob = grabFrame()
+    const blob = grabFrame(video.current)
     s.frames.push(blob)
     s.views.push(view)
     s.looks.push(blob.then(lookAtFrame).then(({ found }) => {
@@ -143,7 +85,7 @@ export default function Camera({ title, hint, onCapture, onBack, onUpload }) {
     setLabels({})
     scan.current = s
     s.timer = setInterval(() => (s.compass ? guideByCompass(s) : guideByTimer(s)), 100)
-    setState('scanning')
+    setPhase('scanning')
   }
 
   // With a compass: show where to turn, and take the photo once lined up and still.
@@ -216,7 +158,7 @@ export default function Camera({ title, hint, onCapture, onBack, onUpload }) {
     if (!s || s.finishing) return
     s.finishing = true
     clearInterval(s.timer)
-    setState('saving')
+    setPhase('saving')
     const frames = (await Promise.all(s.frames)).filter(Boolean)
     // Give the last looks a moment to land; never hold up the scan for them.
     await Promise.race([Promise.all(s.looks), new Promise(r => setTimeout(r, 1500))])
@@ -232,7 +174,7 @@ export default function Camera({ title, hint, onCapture, onBack, onUpload }) {
     }
     setLive(null)
     setLabels({})
-    setState('ready')
+    setPhase('ready')
   }
 
   const scanning = state === 'scanning'
@@ -261,6 +203,7 @@ export default function Camera({ title, hint, onCapture, onBack, onUpload }) {
 
       <div className="camera-bottom">
         <SpottedLabels labels={labels} />
+        {state === 'error' && <button className="primary" onClick={retry}>📷 Turn on camera</button>}
         <p className="camera-hint">{scanning ? live?.guide : hint}</p>
         {state === 'ready' && <button className="shutter" onClick={startScan}>START<br />SCAN</button>}
         {scanning && (
@@ -327,11 +270,4 @@ function SpottedLabels({ labels }) {
       ))}
     </div>
   )
-}
-
-function cameraError(err) {
-  if (err.message === 'insecure') return 'The camera needs the secure link (https://). Check the address and try again.'
-  if (err.name === 'NotAllowedError') return 'Camera access is blocked. Allow it in your browser settings (iPhone: Settings → Apps → Safari → Camera), then reload.'
-  if (err.name === 'NotFoundError') return 'No camera found on this device.'
-  return `Could not start the camera (${err.name || err.message}).`
 }

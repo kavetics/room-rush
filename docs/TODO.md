@@ -17,10 +17,13 @@ Flow: ① consent → ② scan (in-app camera) → ③ reading your room → ④
 - [ ] Test the camera on iPhone
 
 ## Backlog (in order, after the in-app camera works)
-- [ ] ⑦ Referee mode: hold-to-record video with sound in the in-app camera, player x of y
-- [ ] Clap counting from the audio (plain code: sharp sound spikes; claps after the catch don't count)
-- [ ] Catch judge from the last frames (SAM finds the ball, Muse Spark rules caught vs. dropped)
-- [ ] Live test: throw a ball in the room
+- [x] ⑦ Referee mode: record a turn with sound (hold, or solo countdown), player x of y
+- [x] Catch judge: SAM follows the ball, Muse Spark rules caught, dropped or unclear
+- [x] Catch accuracy test: 20 of 20 (one player, one room)
+- [ ] Catch accuracy with other people and rooms, hand-held
+- [x] Clap counting from the audio (plain code), scores and winner
+- [x] Clap accuracy test: 10 of 11 exact (quiet room, one player)
+- [ ] Clap counting with background noise and music
 - [ ] Scan checks overhead clearance for Clap Catch (ceiling fan, chandelier, lamps)
 - [ ] ⑧ Podium (faces from each player's clip) + Muse Image graphics
 - [ ] ⑨ Share the best clip (Web Share to Instagram, Facebook, WhatsApp)

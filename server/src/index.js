@@ -8,6 +8,9 @@ import { referee } from './referee.js';
 import { startScan, getScan, answerPlayers, getRounds, getRound } from './scan.js';
 import { refereeRound } from './roundReferee.js';
 import { lookAtFrame } from './look.js';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { refereeCatch } from './catchReferee.js';
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -74,6 +77,55 @@ app.post('/api/scan/:id/games/:game/rounds/:round/referee', upload.array('frames
     res.json(await refereeRound(round, frames));
   } catch (err) { next(err); }
 });
+
+// Clap Catch: one recorded turn, as frames with their times in seconds.
+app.post('/api/clap-catch/referee', upload.array('frames', 70), async (req, res, next) => {
+  try {
+    const times = JSON.parse(req.body.times || '[]');
+    if (!req.files?.length || times.length !== req.files.length) throw Object.assign(new Error('Send frames with matching times.'), { status: 400 });
+    const envelope = req.body.envelope ? JSON.parse(req.body.envelope) : undefined;
+    // One JSON line per step, so the phone can show the analysis as it happens.
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.flushHeaders();
+    const send = line => res.write(`${JSON.stringify(line)}\n`);
+    try {
+      const result = await refereeCatch(req.files.map((f, i) => ({ t: times[i], dataUrl: toDataUrl(f.buffer, f.mimetype) })), { envelope, onProgress: send });
+      send({ step: 'done', result });
+    } catch (err) {
+      console.error(err);
+      send({ step: 'error', error: err.message });
+    }
+    res.end();
+  } catch (err) { next(err); }
+});
+
+// Development only: the phone reports what its camera is doing, since we can't see its screen.
+if (process.env.NODE_ENV !== 'production') {
+  app.post('/api/client-log', (req, res) => {
+    console.log(`[phone] ${String(req.body?.message).slice(0, 500)}`);
+    res.json({ ok: true });
+  });
+}
+
+// Development only: the voice-guided test mode saves labeled turns to the git-ignored test-photos folder.
+if (process.env.NODE_ENV !== 'production') {
+  const RUNS = new URL('../../test-photos/catch-runs/', import.meta.url).pathname;
+  const safeId = id => {
+    if (!/^[\w-]{1,60}$/.test(id)) throw Object.assign(new Error('Bad id.'), { status: 400 });
+    return id;
+  };
+  app.post('/api/clap-catch/test/:run/:trial', upload.array('frames', 70), async (req, res, next) => {
+    try {
+      const dir = join(RUNS, safeId(req.params.run), `trial-${safeId(req.params.trial)}`);
+      await mkdir(dir, { recursive: true });
+      await Promise.all(req.files.map((f, i) => writeFile(join(dir, `f${String(i).padStart(3, '0')}.jpg`), f.buffer)));
+      if (req.body.envelope) await writeFile(join(dir, 'envelope.json'), req.body.envelope);
+      await writeFile(join(dir, 'label.json'), JSON.stringify({ label: req.body.label, style: req.body.style, claps: req.body.claps ? Number(req.body.claps) : null, times: JSON.parse(req.body.times) }, null, 2));
+      res.json({ saved: req.files.length });
+    } catch (err) { next(err); }
+  });
+}
 
 app.use((err, _req, res, _next) => {
   console.error(err);

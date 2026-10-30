@@ -210,3 +210,66 @@ figcaption .moving { color: var(--stop); font-weight: 700; }
 .thumbs button { flex: 0 0 56px; height: 42px; padding: 0; border: 2px solid transparent; border-radius: 8px; overflow: hidden; background: none; opacity: 0.6; }
 .thumbs button.on { border-color: var(--accent); opacity: 1; }
 .thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Clap Catch */
+.person-outline { position: absolute; top: 12%; left: 50%; height: 62%; transform: translateX(-50%); pointer-events: none; }
+.person-outline circle, .person-outline path { fill: none; stroke: rgba(255,255,255,0.75); stroke-width: 2; stroke-dasharray: 5 4; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.mode-switch { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(0,0,0,0.45); }
+.mode-switch button { border: 0; border-radius: 999px; padding: 7px 14px; background: none; color: #fff; font-size: 0.85rem; font-weight: 700; }
+.mode-switch button.on { background: #fff; color: #000; }
+.camera-countdown { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; font-size: 7rem; font-weight: 800; text-shadow: 0 2px 16px #000; }
+.turn-sheet { position: absolute; inset: 0; z-index: 1; overflow-y: auto; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 64px 16px max(env(safe-area-inset-bottom), 16px); background: var(--bg); color: var(--text); }
+.turn-clip { width: 100%; min-height: 0; flex: 0 1 62vh; object-fit: contain; border-radius: 14px; background: #000; }
+.test-call { position: absolute; top: 18%; left: 16px; right: 16px; margin: 0; padding: 16px; border-radius: 18px; text-align: center; font-size: 2.2rem; font-weight: 800; }
+.test-call small { display: block; font-size: 1.2rem; }
+.test-call.catch { background: rgba(26,158,85,0.9); }
+.test-call.drop { background: rgba(217,54,54,0.9); }
+.camera-status { margin: 0; font-size: 0.72rem; color: rgba(255,255,255,0.75); }
+
+/* What the AI saw: live analysis and replay */
+.turn-sheet:has(.ai-live), .turn-sheet:has(.replay) { justify-content: flex-start; }
+.ai-steps { list-style: none; padding: 0; margin: 10px 0 0; color: var(--muted); font-size: 0.92rem; }
+.ai-steps li { padding: 3px 0; }
+.ai-steps .done { color: var(--text); }
+.spinner.small { display: inline-block; width: 12px; height: 12px; border-width: 2px; vertical-align: -1px; }
+.ai-live .photo img { max-height: 42vh; }
+.box-ball { fill: none; stroke: #ffd23f; stroke-width: 6; }
+.box-person { fill: none; stroke: rgba(255,255,255,0.7); stroke-width: 3; stroke-dasharray: 12 8; }
+.replay { position: relative; width: 100%; max-height: 62vh; margin: 8px auto; overflow: hidden; border-radius: 14px; background: #000; }
+.replay video { display: block; width: 100%; height: 100%; object-fit: fill; }
+.replay svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.ball-trail { fill: none; stroke: #ffd23f; stroke-width: 4; opacity: 0.6; }
+.replay-events { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 4px; pointer-events: none; }
+.timeline { position: relative; height: 34px; margin: 18px 12px 8px; border-bottom: 3px solid var(--border); }
+.playhead { position: absolute; bottom: -3px; width: 2px; height: 30px; background: var(--accent); }
+.tick.spark { position: absolute; bottom: -3px; width: 2px; height: 8px; background: #a98bff; }
+.mark { position: absolute; bottom: 4px; transform: translateX(-50%); padding: 0; border: 0; background: none; font-size: 1.05rem; line-height: 1; }
+
+.audio-map { margin: 12px 0; }
+.audio-map .meta { margin: 4px 0; }
+.audio-map svg { display: block; width: 100%; height: 70px; border-radius: 8px; background: var(--bg); cursor: pointer; }
+.audio-map .wave { fill: var(--muted); opacity: 0.55; }
+.audio-map .spike { stroke: #8a84a3; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.audio-map .spike.counted { stroke: #3ddc84; stroke-width: 2.5; }
+.audio-playhead { stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.audio-map .meter-axis { margin-left: 0; }
+.test-link { text-decoration: none; }
+.camera-video.mirrored { transform: scaleX(-1); }
+.test-call { font-size: 3rem; line-height: 1.1; }
+.test-call small { font-size: 2rem; }
+
+/* Test turn card: readable from across the room */
+.turn-card { position: absolute; top: 12%; left: 12px; right: 12px; padding: 18px; border-radius: 22px; text-align: center; color: #fff; background: rgba(0,0,0,0.72); }
+.turn-card.go { background: rgba(26,158,85,0.92); }
+.turn-card.check { background: rgba(108,60,255,0.9); }
+.turn-card.right { background: rgba(26,158,85,0.92); }
+.turn-card.wrong { background: rgba(217,54,54,0.92); }
+.turn-title { margin: 0; font-size: 2.8rem; font-weight: 800; line-height: 1.1; }
+.turn-title.big { font-size: 6rem; }
+.turn-sub { margin: 8px 0 0; font-size: 1.4rem; font-weight: 600; }
+.turn-left { margin: 8px 0 4px; font-size: 2.2rem; font-weight: 800; }
+.turn-bar { height: 12px; border-radius: 6px; background: rgba(255,255,255,0.3); overflow: hidden; }
+.turn-bar div { height: 100%; background: #fff; }
+.turn-tally { margin: 10px 0 0; font-size: 1.1rem; opacity: 0.9; }
+.test-final { margin: 0; font-size: 1.5rem; font-weight: 800; text-align: center; }
+.test-controls { width: 100%; max-width: 420px; }
