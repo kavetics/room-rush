@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { refereeCatch, saveTestTrial } from './api.js'
-import { loudnessEnvelope, report, sampleFrames, startRecording, useCamera } from './useCamera.js'
+import { playClip, prepareVoice } from './voice.js'
+import { askCameraAndMic, loudnessEnvelope, openMic, report, sampleFrames, startRecordingWithMic, useCamera } from './useCamera.js'
 
 // Hands-free accuracy tests. Every turn has the same rhythm: read the task, 3-2-1, GO with a visible
 // timer, the referee checks it, see the result, get the ball, next. Each turn is saved with its label.
@@ -27,24 +28,10 @@ const CALL_TEXT = { caught: 'caught', dropped: 'dropped', unclear: "couldn't tel
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 const shuffled = list => list.map(v => [Math.random(), v]).sort((a, b) => a[0] - b[0]).map(([, v]) => v)
 
-// Pre-recorded voice in one <audio> element: it plays like normal media, where browser speech can be silent.
-// The element is unlocked by the START tap and reused.
-const voice = typeof Audio === 'undefined' ? null : new Audio()
-function playClip(name) {
-  return new Promise(resolve => {
-    const timer = setTimeout(resolve, 5000)
-    const finish = () => { clearTimeout(timer); resolve() }
-    voice.onended = finish
-    voice.onerror = () => { report(`voice clip failed: ${name}`); finish() }
-    voice.src = `/voice/${name}.m4a`
-    voice.play().catch(err => { if (err.name !== 'AbortError') report(`voice blocked: ${name} ${err.name}`); finish() })
-  })
-}
-
 export default function CatchTest({ claps = false }) {
   // Front camera by default: the screen faces the player, so they can read the task and see the shot.
   const [facing, setFacing] = useState('user')
-  const { video, stream, status, error, retry } = useCamera({ audio: claps, facing })
+  const { video, stream, status, error, retry } = useCamera({ facing })
   const [stage, setStage] = useState('ready') // ready → running → done
   const [turn, setTurn] = useState(null) // { index, total, task, phase, count, call, right, note }
   const [tally, setTally] = useState({ done: 0, right: 0, failed: 0 })
@@ -74,7 +61,8 @@ export default function CatchTest({ claps = false }) {
 
   function start() {
     report('START tapped')
-    playClip('hear') // must start right inside the tap, or later clips are blocked
+    prepareVoice() // must start right inside the tap, or later clips are blocked
+    if (claps) askCameraAndMic()
     video.current?.play().catch(() => {})
     run().catch(err => {
       report(`test failed: ${err.name} ${err.message}`)
@@ -95,13 +83,15 @@ export default function CatchTest({ claps = false }) {
       setTurn({ ...base, phase: 'count', count: n })
       await Promise.all([playClip(`n${n}`), wait(1000)])
     }
+    // With the mic: wait for it before saying Go, so a slow mic can't cut off the throw.
+    const mic = claps ? await openMic() : null
     playClip('go')
-    await wait(claps ? 400 : 0) // don't record the word "Go" as a clap
+    await wait(claps ? 700 : 0) // don't record the word "Go" as a clap
     if (control.current.stopping) return
 
     // 3. GO: a visible timer for the turn.
     setTurn({ ...base, phase: 'go', endsAt: performance.now() + TURN_SECONDS * 1000 })
-    const recorder = claps ? startRecording(stream.current) : null
+    const recorder = claps ? startRecordingWithMic(stream.current, mic) : null
     const sampler = sampleFrames(video.current)
     await wait(TURN_SECONDS * 1000)
     const [frames, sound] = await Promise.all([sampler.stop(), recorder?.stop()])
@@ -177,7 +167,7 @@ export default function CatchTest({ claps = false }) {
         {stage === 'ready' && status === 'ready' && (
           <>
             <p className="camera-hint">Prop the phone up facing you, with your whole body and the space above your head in the shot. Each turn: read the task, 3-2-1, GO. You get {TURN_SECONDS} seconds, then the referee checks it.</p>
-            <button className="secondary-dark" onClick={() => playClip('hear')}>🔊 Test voice</button>
+            <button className="secondary-dark" onClick={() => { prepareVoice(); playClip('hear') }}>🔊 Test voice</button>
             <button className="secondary-dark" onClick={() => setFacing(f => (f === 'user' ? 'environment' : 'user'))}>🔄 Use {facing === 'user' ? 'back' : 'front'} camera</button>
             <button className="shutter" onClick={start}>START</button>
           </>

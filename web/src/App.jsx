@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { startScan, getScan, answerPlayers, getGame, shrinkPhoto } from './api.js'
+import { startScan, getScan, answerPlayers, shrinkPhoto } from './api.js'
 import Round from './Round.jsx'
 import Camera from './Camera.jsx'
 import ClapCatch from './ClapCatch.jsx'
+import VoiceTest from './VoiceTest.jsx'
 import CatchTest from './CatchTest.jsx'
 import { askMotionPermission } from './sweep.js'
+import { prepareVoice } from './voice.js'
+import { askCameraAndMic } from './useCamera.js'
+import { logEvent, RECORDING } from './session.js'
 import './App.css'
 
 const VERDICT = {
@@ -25,6 +29,7 @@ export default function App() {
   const test = new URLSearchParams(window.location.search).get('test')
   if (test === 'catch' || test === 'claps') return <CatchTest claps={test === 'claps'} />
   if (test === 'turn') return <div className="app"><ClapCatch players={2} onBack={() => { window.location.search = '?test=menu' }} /></div>
+  if (test === 'voice') return <VoiceTest />
   if (test === 'menu') return <TestMenu />
   return <Game />
 }
@@ -33,6 +38,7 @@ export default function App() {
 function TestMenu() {
   const links = [
     ['turn', '👏 Play Clap Catch', 'Names, rounds, turns, scoreboard and the full report. No scan.'],
+    ['voice', '🔊 Voice test', 'Can the phone speak while filming, with the mic open or closed? About 2 minutes.'],
     ['catch', '🗣️ Catch test', '20 throws called out by voice, about 4 minutes. No mic.'],
     ['claps', '🔢 Clap test', '13 throws with the mic on, about 2.5 minutes. Read the screen.'],
   ]
@@ -80,6 +86,7 @@ function Game() {
   }
 
   async function onScan({ frames, views, labels = {} }) {
+    logEvent('scan_submitted', { photos: frames.length, labels: Object.keys(labels).join(', ') })
     setError(null)
     setResult(null)
     setGame(null)
@@ -95,6 +102,7 @@ function Game() {
       setPlayers(Math.max(first.peopleSeen + 1, 2))
       setSeated(0)
       setScreen(first.status === 'unsafe' ? 'unsafe' : 'count')
+      logEvent('scan_result', { verdict: first.location?.verdict, peopleSeen: first.peopleSeen })
     } catch (err) {
       setError(err.message)
       setScreen('error')
@@ -106,20 +114,11 @@ function Game() {
     setClock(c => ({ ...c, answeredAt: Date.now() }))
     try {
       setResult(await answerPlayers(scan.id, players, seated))
+      logEvent('games_shown', { players, seated })
       setScreen('games')
     } catch (err) {
       setError(err.message)
       setScreen('error')
-    }
-  }
-
-  async function openGame(card, index) {
-    setGame({ ...card, index, rounds: null, waitedMs: null })
-    try {
-      const { game: full, waitedMs } = await getGame(scan.id, index)
-      setGame({ ...full, index, waitedMs })
-    } catch (err) {
-      setGame(g => ({ ...g, error: err.message }))
     }
   }
 
@@ -142,10 +141,11 @@ function Game() {
             <ul>
               <li><span>🎥</span><p><strong>We film the room and the players.</strong> Make sure everyone on camera is OK with it.</p></li>
               <li><span>🛟</span><p><strong>Play safe.</strong> Clear the floor, use soft things only, and stay away from lamps, TVs and anything breakable. Stop if anyone feels unsafe.</p></li>
-              <li><span>🤖</span><p><strong>Meta AI reads your photos and clips</strong> to set up the game and referee it. Room Rush doesn't save them.</p></li>
+              <li><span>🤖</span><p><strong>Meta AI reads your photos and clips</strong> to set up the game and referee it.{' '}
+                {RECORDING ? <>This is a test version: we save video and sound of each game, and review them using AI tools, to improve Room Rush.</> : "Room Rush doesn't save them."}</p></li>
             </ul>
           </section>
-          <button className="primary big" onClick={() => { askMotionPermission(); snap() }}>Got it, let's play!</button>
+          <button className="primary big" onClick={async () => { askMotionPermission(); prepareVoice(); await askCameraAndMic(); snap() }}>Got it, let's play!</button>
         </main>
       )}
 
@@ -221,27 +221,6 @@ function Game() {
               <p className="meta">1–8 players, one at a time · needs a soft ball</p>
             </button>
           </section>
-          {[
-            { kind: 'classic', title: '🎯 Classics', blurb: 'Proven party games, set up for your room.' },
-            { kind: 'experiment', title: '🧪 AI Experiments', blurb: 'Invented by AI just now for this room. Untested, and the referee may be less reliable. Why not try something new?' },
-          ].map(section => {
-            const games = result.games.map((g, index) => ({ g, index })).filter(({ g }) => g.kind === section.kind)
-            if (!games.length) return null
-            return (
-              <section key={section.kind} className="game-section">
-                <h2 className="section-title">{section.title}</h2>
-                <p className="meta">{section.blurb}</p>
-                {games.map(({ g, index }) => (
-                  <button key={g.title} className={`card game ${g.kind}`} onClick={() => openGame(g, index)}>
-                    {g.kind === 'experiment' && <span className="tag">AI-invented · untested</span>}
-                    <h3>{g.title}</h3>
-                    <p>{g.pitch}</p>
-                    <p className="meta">{g.min_players}–{g.max_players} players · {g.space_needed} space{g.seated_role ? ' · seated role' : ''}</p>
-                  </button>
-                ))}
-              </section>
-            )
-          })}
           <details className="card">
             <summary>What the AI saw{frameUrls.length > 1 ? ` (${frameUrls.length} frames)` : ''}</summary>
             <Frames urls={frameUrls} report={scan.report} />

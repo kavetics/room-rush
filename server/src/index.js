@@ -8,9 +8,10 @@ import { referee } from './referee.js';
 import { startScan, getScan, answerPlayers, getRounds, getRound } from './scan.js';
 import { refereeRound } from './roundReferee.js';
 import { lookAtFrame } from './look.js';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { refereeCatch } from './catchReferee.js';
+import { addSessionRoutes } from './sessions.js';
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -100,10 +101,14 @@ app.post('/api/clap-catch/referee', upload.array('frames', 70), async (req, res,
   } catch (err) { next(err); }
 });
 
+if (process.env.NODE_ENV !== 'production') addSessionRoutes(app);
+
 // Development only: the phone reports what its camera is doing, since we can't see its screen.
 if (process.env.NODE_ENV !== 'production') {
   app.post('/api/client-log', (req, res) => {
-    console.log(`[phone] ${String(req.body?.message).slice(0, 500)}`);
+    const line = `[phone] ${String(req.body?.message).slice(0, 500)}`;
+    console.log(line);
+    appendFile(new URL('../../test-photos/phone-log.txt', import.meta.url).pathname, `${new Date().toISOString()} ${line}\n`).catch(() => {});
     res.json({ ok: true });
   });
 }

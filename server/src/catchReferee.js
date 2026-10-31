@@ -8,8 +8,9 @@ const BALL_CONFIDENCE = 0.3; // a small moving ball scores low; code filters the
 const MAX_SAM_AT_ONCE = 16;
 const ABOVE_HEAD = 0.05; // ball height relative to the player: 0 = top of head, 1 = feet
 const NEAR_FLOOR = 0.85;
-const AFTER_PEAK_SECONDS = 2;
-const MAX_SPARK_FRAMES = 12;
+const WINDOW_SECONDS = 3; // dense frames from just before the action
+const LEAD_IN_SECONDS = 0.5;
+const MAX_SPARK_FRAMES = 16;
 
 const CATCH_SCHEMA = {
   type: 'object',
@@ -28,7 +29,10 @@ const SYSTEM = [
   'caught: the ball came down into the hands, or was trapped against the body, without touching the floor first.',
   'dropped: the ball touched the floor or was missed. Picking it up afterwards is still dropped.',
   'Other people may be in the frame: judge only the person who throws the ball.',
-  'unclear: the frames do not show enough to decide. Never guess.',
+  'The ball is small and fast: it is often blurred, hidden in the hands, or missing from a frame, and the exact moment of the catch may fall between frames.',
+  'So judge the whole sequence: a ball held in the hands after the throw, never seen low or on the floor, is caught.',
+  'A ball seen on or near the floor or rolling away, or a player bending down to the floor to get it, is dropped, even if they hold it afterwards.',
+  'unclear: only when the frames show neither. Do not guess, but do not ask for a perfect view of the catch.',
 ].join(' ');
 
 async function inPool(items, work) {
@@ -81,14 +85,15 @@ export function measureBall(track) {
     thrownAt,
     endHeight: end?.height ?? null,
     endedNearFloor: end ? end.height >= NEAR_FLOOR : null,
+    wasNearFloor: seen.some(p => p.height >= NEAR_FLOOR),
   };
 }
 
-// Dense frames right after the peak (where the catch happens), then a few to the end of the clip.
-function pickFrames(frames, peakAt) {
-  const start = peakAt == null ? 0 : frames.findIndex(f => f.t >= peakAt);
-  const after = frames.slice(Math.max(0, start));
-  const near = after.filter(f => f.t <= after[0].t + AFTER_PEAK_SECONDS);
+// Dense frames from where the action starts (where the catch happens), then a few to the end of the clip.
+function pickFrames(frames, actionAt) {
+  const from = Math.max(0, (actionAt ?? 0) - LEAD_IN_SECONDS);
+  const after = frames.filter(f => f.t >= from);
+  const near = after.filter(f => f.t <= after[0].t + WINDOW_SECONDS);
   const rest = after.slice(near.length);
   const room = Math.max(0, MAX_SPARK_FRAMES - near.length);
   const later = rest.filter((_, i) => rest.length <= room || (i % Math.ceil(rest.length / Math.max(1, room))) === 0).slice(0, room);
@@ -99,8 +104,16 @@ function pickFrames(frames, peakAt) {
 /** frames: [{ t, dataUrl }] in time order. */
 export async function refereeCatch(frames, { envelope, onProgress = () => {} } = {}) {
   const started = Date.now();
+  // One failed look is survivable. But if the API is refusing calls (billing, outage), say so:
+  // "I couldn't see the ball" would blame the player for our problem.
+  let lookFailures = 0;
+  let lastLookError = null;
   const look = (f, prompt, minConfidence) => segment(f.dataUrl, prompt, { minConfidence })
-    .then(r => r.objects).catch(() => []);
+    .then(r => r.objects).catch(err => {
+      lookFailures += 1;
+      lastLookError = err.message;
+      return [];
+    });
 
   // The ball on every frame; the player moves less, so every other frame is enough.
   const samStart = Date.now();
@@ -113,6 +126,9 @@ export async function refereeCatch(frames, { envelope, onProgress = () => {} } =
   ]);
   const samMs = Date.now() - samStart;
   const samCalls = balls.length + people.length;
+  if (lookFailures > samCalls / 2) {
+    throw new Error(`The AI service refused the referee's request: ${lastLookError}`);
+  }
 
   const biggest = list => list.slice().sort((a, b) => b.width * b.height - a.width * a.height)[0]?.box ?? null;
   const personAt = frames.map((_, i) => {
@@ -128,6 +144,7 @@ export async function refereeCatch(frames, { envelope, onProgress = () => {} } =
     framesWithBall: `${measured.framesWithBall} of ${frames.length}`,
     endHeight: measured.endHeight,
     endedNearFloor: measured.endedNearFloor,
+    wasNearFloor: measured.wasNearFloor,
     // Height of the ball on the player: 0 = top of head, 1 = feet, below 0 = above the head.
     path: measured.path.filter(p => p.height != null).map(p => `${p.t}s:${p.height}`).join(' '),
   };
@@ -146,11 +163,14 @@ export async function refereeCatch(frames, { envelope, onProgress = () => {} } =
   const heardOnly = envelope ? { count: null, heard: findSpikes(envelope).map(s => s.t), counted: [] } : null;
   const finish = fields => ({ claps: heardOnly, ...fields, evidence, report, timing: { ...timing, totalMs: Date.now() - started } });
 
-  // Nothing to judge: don't spend a Spark call, and don't guess.
-  if (measured.framesWithBall === 0) return finish({ call: 'unclear', reason: "I couldn't see the ball. Make sure it's in the shot and try again.", confidence: 1, caughtAt: null, closeCall: false });
+  // No player means nothing to judge. A missing ball is different: SAM often can't find a small, fast
+  // ball, but Muse Spark can still follow it across the frames.
   if (!measured.framesWithPerson) return finish({ call: 'unclear', reason: "I couldn't see the player. Step back so your whole body is in the shot.", confidence: 1, caughtAt: null, closeCall: false });
 
-  const chosen = pickFrames(frames, measured.peakAt);
+  // SAM can miss the throw, so the first clap also marks where the action starts.
+  const firstSound = envelope ? findSpikes(envelope)[0]?.t : undefined;
+  const actionAt = Math.min(measured.peakAt ?? Infinity, firstSound ?? Infinity);
+  const chosen = pickFrames(frames, Number.isFinite(actionAt) ? actionAt : 0);
   timing.framesSentToSpark = chosen.length;
   report.sparkTimes = chosen.map(f => f.t);
   onProgress({ step: 'spark', frames: chosen.length, times: report.sparkTimes });

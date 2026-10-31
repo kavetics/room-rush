@@ -185,3 +185,33 @@ Exact clap count on 10 of 11 caught turns (1, 2, 3 claps; claps after the catch 
 
 ### Meta API 404 on hosted servers
 Render gets 404 model_not_found from Muse Spark while the same key works from the Mac. Per the hackathon Discord, Meta confirmed it isn't caused by builders and is investigating a likely entitlement caching issue. Added retries (3, with growing pauses) for 404s only, because the error can clear up on its own. This won't fix Render if every call fails; open a support ticket and report it in the partner feedback.
+
+### Voice and hands-free Solo
+- Owner feedback: the game was too quiet. The phone now speaks: the task, 3-2-1-Go, and the verdict with the clap count (pre-recorded clips, shared with the tests).
+- Solo is hands-free after the first START: turns submit, advance and restart by themselves, with a "tap to stay here" escape.
+- "Load failed" on a turn: not reproduced from the Mac (4 of 4 saved turns fine), so likely the phone's connection. The phone now resends up to 3 times, since the frames are still in memory. Each judged turn reports its numbers to the Mac in dev.
+- Noticed: a replayed turn counted 2 claps, then 1 on another run, because Muse Spark's catch time varies. Worth a stabler catch time.
+- Game voice was silent on iPhone with the mic open all game. The mic now opens only while a turn records. Big instruction cards added to the game, with a voice test on setup. Phone reports also go to a git-ignored log file.
+
+### Mic fix and test recording
+- Owner saw a mic prompt mid-game: that caused the freeze. The mic is now requested once when the host taps Start game, and each turn waits for the mic before saying Go.
+- Test recording (dev Mac only): each game's timeline, video, frames, sound map and referee result go to the git-ignored `test-photos/sessions`. `npm run review` shows stalls, failures and suspicious calls; `--rerun` replays turns through the current referee. Consent updated to say footage is saved and reviewed; saving stays off in the hosted app.
+
+### First reviewed game: billing error hidden as a referee call
+Session recording found it right away. Meta's API started answering 402 "Billing verification failed" on every call. The referee swallowed SAM errors, saw no ball, and told the player "I couldn't see the ball". Now, if most SAM looks fail, the real error is shown. The timeline also lost about 4 minutes of events to a dropped connection; unsent events are now kept and resent.
+
+- Owner's call: Clap Catch is the only game for now. Classics and AI-invented games stay in the code but aren't generated or shown, which saves API calls and wait time after the scan.
+
+### Turns without interruptions
+- Owner's call: no verdict or AI screen between turns. Turns run back to back, the referee works through a background queue, and "Getting the results…" finishes what's left after the last turn of each round. The AI analysis still shows on that screen, and the replay stays in the final report.
+- Since nobody sees a verdict during play, the results screen offers a Retake for turns the referee couldn't call, that lost their clap count, or that failed.
+
+### Voice test result, flow fixes
+- Voice test on iPhone (Chrome, Safari): no clip stuck in any logged run; both playback methods sound alike; the mic opens in about 0.9 s; the owner heard better sound with the mic closed, and tapping noises with it open. Decision: mic closed except during a turn.
+- The last game's 24 s countdown and stuck timer came from clips that hung while the flow waited on them. Timing no longer waits on voice; clips load into memory up front and fall back to Web Audio. Nothing speaks until a turn starts; Go and Time mark each turn. One camera + mic prompt on the first tap.
+- Clap count no longer goes blank when SAM misses the throw: everything up to the catch counts (a missed throw lost 4 correctly heard claps).
+
+
+### Referee fixes from the first reviewed game with players
+Two of three real turns came back "couldn't tell". SAM not finding the small ball no longer skips Muse Spark; frames are chosen from the first clap or the throw, whichever is earlier (16 frames, up from 12); Muse Spark is told it won't see every moment. Spikes in the first 0.25 s are ignored (the mic opening).
+- Clap counting now follows the claps' rhythm (a long gap ends the burst; a late last spike near the catch is the ball landing), because Muse Spark's catch time shifts between runs. Reran saved turns: catch 33 of 33, exact claps 11 of 11. Those turns also guided the tuning, so this needs fresh turns to confirm. Turns from other players aren't labeled yet.

@@ -12,8 +12,12 @@ const isMainBackLens = label => /^back camera$/i.test(label) ||
   (/back|rear/i.test(label) && !/ultra|wide|tele|dual|triple|front/i.test(label))
 
 // Tell the Mac what the camera is doing, since nobody there can see the phone's screen.
+let reportListener = null
+export const onReport = listener => { reportListener = listener }
+
 export function report(message) {
   if (!import.meta.env.DEV) return
+  reportListener?.(message)
   fetch('/api/client-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) }).catch(() => {})
 }
 if (import.meta.env.DEV) {
@@ -154,9 +158,9 @@ export function startRecording(stream) {
  */
 export async function loudnessEnvelope(blob) {
   try {
-    const context = new (window.AudioContext || window.webkitAudioContext)()
+    // Offline: this runs in the background during other turns, and must not disturb the mic or the voice.
+    const context = new OfflineAudioContext(1, 1, 44100)
     const audio = await context.decodeAudioData(await blob.arrayBuffer())
-    context.close?.()
     const samples = audio.getChannelData(0)
     const step = Math.round(audio.sampleRate / 100)
     const envelope = []
@@ -177,6 +181,51 @@ export function unlockSpeech() {
   speechSynthesis.cancel()
   report(`voice unlock · voices ${speechSynthesis.getVoices().length}`)
   speechSynthesis.speak(new SpeechSynthesisUtterance('Okay'))
+}
+
+const MIC_TIMEOUT_MS = 3000
+
+let permissionsAsked = null
+
+/** One prompt for camera and mic together, from the host's tap, so nothing prompts mid-game. */
+export function askCameraAndMic() {
+  permissionsAsked ??= navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(stream => {
+    stream.getTracks().forEach(t => t.stop())
+    report('camera and mic allowed at start')
+    return true
+  }).catch(err => {
+    report(`camera or mic refused at start: ${err.name}`)
+    permissionsAsked = null // they can be asked again
+    return false
+  })
+  return permissionsAsked
+}
+
+/**
+ * Opens the mic for one recording: on iPhone an open mic can quiet the voice instructions, so it stays
+ * closed while the app is talking. Resolves to null if it isn't ready in time; the turn then has no clap count.
+ */
+export async function openMic() {
+  const asked = performance.now()
+  const mic = await Promise.race([
+    navigator.mediaDevices.getUserMedia({ audio: true }).catch(err => { report(`mic refused: ${err.name}`); return null }),
+    new Promise(resolve => setTimeout(() => resolve(null), MIC_TIMEOUT_MS)),
+  ])
+  report(`mic ${mic ? 'on' : 'unavailable'} in ${Math.round(performance.now() - asked)} ms`)
+  return mic
+}
+
+/** Records the camera plus an already open mic. stop() returns the video and closes the mic. */
+export function startRecordingWithMic(stream, mic) {
+  const combined = new MediaStream([...stream.getVideoTracks(), ...(mic?.getAudioTracks() ?? [])])
+  const recorder = startRecording(combined)
+  return {
+    stop: async () => {
+      const blob = await recorder.stop()
+      mic?.getTracks().forEach(t => t.stop())
+      return blob
+    },
+  }
 }
 
 /** Says something out loud. Resolves when finished, or after a few seconds if the phone stays silent. */

@@ -9,6 +9,7 @@ export default defineConfig({
   plugins: [react(), basicSsl()],
   server: {
     host: true, // reachable from phones on the same Wi-Fi
+    allowedHosts: true, // also by the Mac's .local name, needed on an iPhone hotspot
     // During development, forward /api calls to the Room Rush server.
     proxy: { '/api': 'http://localhost:8787' },
   },

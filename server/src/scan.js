@@ -10,6 +10,9 @@ import { readRoom } from './room.js';
 import { designCards, designRounds, pickGames } from './games.js';
 import { adaptClassics } from './classics.js';
 
+// Clap Catch only for now: the classics and AI-invented games stay in the code, but aren't generated or shown.
+const OTHER_GAMES_ENABLED = false;
+
 const scans = new Map();
 const TTL_MS = 60 * 60 * 1000;
 
@@ -53,6 +56,10 @@ export async function startScan(images, { views } = {}) {
   scan.ready = (async () => {
     scan.report = await readRoom(images, { personBoxes, views });
     scan.mark('report_ready');
+    if (!OTHER_GAMES_ENABLED) {
+      scan.cards = [];
+      return;
+    }
     const caution = location.verdict === 'caution' ? location.suggestion : '';
     const [classics, experiments] = await Promise.all([
       adaptClassics(scan.report).then(r => { scan.mark('classics_ready'); return r.games; }),
@@ -80,7 +87,7 @@ export async function answerPlayers(id, { players, seated = 0 }) {
 
   let games = pickGames(scan.cards, { players, seated });
   let fallback = false;
-  if (!games.length) {
+  if (!games.length && OTHER_GAMES_ENABLED) {
     // Rare: nothing fits. Design cards for this exact group instead.
     const exact = await designCards(scan.report, { peopleSeen: players - 1 });
     games = pickGames(exact.games.map(g => ({ ...g, kind: 'experiment' })), { players, seated });

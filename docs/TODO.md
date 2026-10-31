@@ -22,7 +22,8 @@ Flow: ① consent → ② scan (in-app camera) → ③ reading your room → ④
 - [x] Catch accuracy test: 20 of 20 (one player, one room)
 - [ ] Catch accuracy with other people and rooms, hand-held
 - [x] Clap counting from the audio (plain code), scores and winner
-- [x] Clap accuracy test: 10 of 11 exact (quiet room, one player)
+- [x] Clap accuracy test: 11 of 11 exact after tuning, on the same turns (quiet room, one player)
+- [ ] Fresh clap test to confirm, since those turns guided the tuning
 - [ ] Clap counting with background noise and music
 - [ ] Scan checks overhead clearance for Clap Catch (ceiling fan, chandelier, lamps)
 - [ ] ⑧ Podium (faces from each player's clip) + Muse Image graphics
@@ -32,6 +33,7 @@ Flow: ① consent → ② scan (in-app camera) → ③ reading your room → ④
 - [ ] Fix "Caution" on every indoor room
 - [ ] Retest Freeze Dance frame pulling on iPhone (backup game)
 - [ ] Saved rooms: reuse a room's report without rescanning. On the phone only, with a delete button; on reopening, show the photo and hazards and ask "Still look like this?", with Rescan. Suggest a rescan after about 30 days.
+- [ ] **Before public launch:** stop saving video and sound, and restore the consent line "Room Rush doesn't save them." Today this is automatic: recording runs only on the dev Mac, and the hosted app already shows the original line.
 - [ ] Metrics: anonymous game events in Supabase, 👍/👎 on referee calls and clap counts, `npm run metrics` summary. Numbers only: no videos, sound, names or IP addresses. Add a line to the consent screen.
 
 ## Weekend (Sat Oct 31 – Sun Nov 1)
