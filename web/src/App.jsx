@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { startScan, getScan, answerPlayers, shrinkPhoto } from './api.js'
-import Round from './Round.jsx'
+import { startScan, getScan, shrinkPhoto } from './api.js'
 import Camera from './Camera.jsx'
 import ClapCatch from './ClapCatch.jsx'
+import { hasSavedGame } from './savedGame.js'
 import VoiceTest from './VoiceTest.jsx'
 import CatchTest from './CatchTest.jsx'
 import { askMotionPermission } from './sweep.js'
@@ -10,12 +10,6 @@ import { prepareVoice } from './voice.js'
 import { askCameraAndMic } from './useCamera.js'
 import { logEvent, RECORDING } from './session.js'
 import './App.css'
-
-const VERDICT = {
-  go: { label: 'Good to go', icon: '✅' },
-  caution: { label: 'OK, with care', icon: '⚠️' },
-  move: { label: 'Not safe here', icon: '⛔' },
-}
 
 const LAYERS = [
   { key: 'people', label: 'People', className: 'people' },
@@ -28,8 +22,10 @@ export default function App() {
   // Accuracy test modes: open the app with ?test=catch (voice, no sound recorded) or ?test=claps
   const test = new URLSearchParams(window.location.search).get('test')
   if (test === 'catch' || test === 'claps') return <CatchTest claps={test === 'claps'} />
+  if (test === 'high') return <CatchTest high />
   if (test === 'turn') return <div className="app"><ClapCatch players={2} onBack={() => { window.location.search = '?test=menu' }} /></div>
   if (test === 'voice') return <VoiceTest />
+  if (test === 'scavenger') return <div className="app"><ClapCatch players={2} gameType="scavenger" onBack={() => { window.location.search = '?test=menu' }} /></div>
   if (test === 'menu') return <TestMenu />
   return <Game />
 }
@@ -38,8 +34,10 @@ export default function App() {
 function TestMenu() {
   const links = [
     ['turn', '👏 Play Clap Catch', 'Names, rounds, turns, scoreboard and the full report. No scan.'],
+    ['scavenger', '🔎 Play Room Scavenger', 'No scan, so it uses general clues instead of your room.'],
     ['voice', '🔊 Voice test', 'Can the phone speak while filming, with the mic open or closed? About 2 minutes.'],
     ['catch', '🗣️ Catch test', '20 throws called out by voice, about 4 minutes. No mic.'],
+    ['high', '🚀 High throw test', '10 throws that leave the top of the frame, about 4 minutes. Turn off any ceiling fan first.'],
     ['claps', '🔢 Clap test', '13 throws with the mic on, about 2.5 minutes. Read the screen.'],
   ]
   return (
@@ -61,23 +59,37 @@ function TestMenu() {
 function Game() {
   const [screen, setScreen] = useState('home')
   const [frameUrls, setFrameUrls] = useState([])
-  const [spotted, setSpotted] = useState({}) // live labels from the sweep // kept for the highlight reel later
-  const [scan, setScan] = useState(null)
-  const [players, setPlayers] = useState(4)
-  const [seated, setSeated] = useState(0)
-  const [result, setResult] = useState(null)
-  const [game, setGame] = useState(null)
+  const [spotted, setSpotted] = useState({}) // live labels from the sweep
+  const [scan, setScan] = useState(null) // the room check, arriving in the background
+  const [players, setPlayers] = useState(2)
   const [error, setError] = useState(null)
-  const [playing, setPlaying] = useState(null)
-  const [clock, setClock] = useState({ start: 0, answeredAt: 0 })
+  const [canResume, setCanResume] = useState(false)
+  const [gameType, setGameType] = useState('clap')
   const fileInput = useRef(null)
 
-  // While the host counts heads, keep checking on the background report and games.
+  useEffect(() => { hasSavedGame().then(setCanResume) }, [])
+
+  // The room report keeps arriving while the host answers.
   useEffect(() => {
-    if (!scan?.id || screen !== 'count' || scan.gamesReady || scan.error) return
+    if (!scan?.id || scan.reportReady || scan.error || scan.status === 'unsafe') return
     const timer = setInterval(() => getScan(scan.id).then(setScan).catch(() => {}), 1200)
     return () => clearInterval(timer)
-  }, [scan?.id, scan?.gamesReady, scan?.error, screen])
+  }, [scan?.id, scan?.reportReady, scan?.error, scan?.status])
+
+  // Stop anyone from playing somewhere unsafe, as soon as we know; otherwise go on once they've answered.
+  useEffect(() => {
+    if (!['count', 'room-check'].includes(screen) || !scan) return
+    if (scan.status === 'unsafe') {
+      logEvent('blocked', { reason: 'unsafe', type: scan.location?.locationType })
+      setScreen('unsafe')
+    } else if (scan.report?.spaceSize === 'small') {
+      logEvent('blocked', { reason: 'small' })
+      setScreen('too-small')
+    } else if (screen === 'room-check' && (scan.reportReady || scan.error)) {
+      logEvent('room_ready', { players, space: scan.report?.spaceSize, reportFailed: Boolean(scan.error) })
+      setScreen('choose-game')
+    }
+  }, [screen, scan, players])
 
   function onPhotoFile(event) {
     const file = event.target.files?.[0]
@@ -85,45 +97,24 @@ function Game() {
     if (file) shrinkPhoto(file).then(small => onScan({ frames: [small] }))
   }
 
-  async function onScan({ frames, views, labels = {} }) {
+  // Ask how many are playing right away; the room gets checked behind that question.
+  function onScan({ frames, views, labels = {} }) {
     logEvent('scan_submitted', { photos: frames.length, labels: Object.keys(labels).join(', ') })
     setError(null)
-    setResult(null)
-    setGame(null)
-    setScreen('checking')
-    setClock({ start: Date.now(), answeredAt: 0 })
-    try {
-      // Show exactly the frames the AI analyzes, so the outlines line up with them.
-      frameUrls.forEach(u => URL.revokeObjectURL(u))
-      setFrameUrls(frames.map(f => URL.createObjectURL(f)))
-      setSpotted(labels)
-      const first = await startScan(frames, views)
+    setScan(null)
+    // Show exactly the frames the AI analyzes, so the outlines line up with them.
+    frameUrls.forEach(u => URL.revokeObjectURL(u))
+    setFrameUrls(frames.map(f => URL.createObjectURL(f)))
+    setSpotted(labels)
+    setScreen('count')
+    startScan(frames, views).then(first => {
       setScan(first)
-      setPlayers(Math.max(first.peopleSeen + 1, 2))
-      setSeated(0)
-      setScreen(first.status === 'unsafe' ? 'unsafe' : 'count')
       logEvent('scan_result', { verdict: first.location?.verdict, peopleSeen: first.peopleSeen })
-    } catch (err) {
+    }).catch(err => {
       setError(err.message)
       setScreen('error')
-    }
+    })
   }
-
-  async function onAnswer() {
-    setScreen('loading-games')
-    setClock(c => ({ ...c, answeredAt: Date.now() }))
-    try {
-      setResult(await answerPlayers(scan.id, players, seated))
-      logEvent('games_shown', { players, seated })
-      setScreen('games')
-    } catch (err) {
-      setError(err.message)
-      setScreen('error')
-    }
-  }
-
-  // Opening a round switches to the round screen.
-  useEffect(() => { if (playing) setScreen('round') }, [playing])
 
   const snap = () => setScreen('scan')
   const upload = () => fileInput.current?.click()
@@ -136,6 +127,7 @@ function Game() {
         <main className="home">
           <h1>Room Rush</h1>
           <p className="tagline">Party gone flat? Scan the room. We'll turn it into a game show.</p>
+          {canResume && <button className="secondary" onClick={() => setScreen('clap-catch')}>▶ Resume your game</button>}
           <section className="card consent">
             <h2>Before you play</h2>
             <ul>
@@ -159,118 +151,88 @@ function Game() {
         />
       )}
 
-      {screen !== 'home' && screen !== 'scan' && (
+      {screen !== 'home' && screen !== 'scan' && screen !== 'clap-catch' && (
         <header className="topbar">
           <button className="link" onClick={() => setScreen('home')}>Room Rush</button>
           <button className="link" onClick={snap}>New scan</button>
         </header>
       )}
 
-      {screen === 'checking' && (
+      {screen === 'count' && (
         <main>
-          <Frames urls={frameUrls} />
-          <Status text="Reading your room…" />
+          <section className="card">
+            <h2>How many players?</h2>
+            {scan?.peopleNotes?.length > 0 && <p className="note">Heads up: {scan.peopleNotes.join(' ')} Maybe leave them out?</p>}
+            <Stepper label="Players" value={players} min={1} max={8} onChange={setPlayers} />
+            {players === 1 && <p className="note">Clap Catch is more fun with friends, but you can practice alone.</p>}
+            <button className="primary" onClick={() => setScreen('room-check')}>Let's play</button>
+          </section>
           <Spotted labels={spotted} />
+          <Frames urls={frameUrls} report={scan?.report} />
+        </main>
+      )}
+
+      {screen === 'room-check' && (
+        <main>
+          <Status text="Checking the room is safe to play in…" />
+          <Spotted labels={spotted} />
+          <Frames urls={frameUrls} report={scan?.report} />
         </main>
       )}
 
       {screen === 'unsafe' && (
         <main>
+          <section className="card verdict move">
+            <h2>⛔ Not safe here</h2>
+            <p>{scan.location.reason}</p>
+            <p className="meta">{scan.location.suggestion || 'Please move somewhere safer, then scan again.'}</p>
+          </section>
+          <button className="primary" onClick={snap}>📷 Scan a different spot</button>
           <Frames urls={frameUrls} />
-          <Verdict location={scan.location} />
-          <button className="primary" onClick={snap}>📸 Try another spot</button>
         </main>
       )}
 
-      {screen === 'count' && (
+      {screen === 'too-small' && (
         <main>
-          <Frames urls={frameUrls} report={scan.report} />
-          <Verdict location={scan.location} />
-          <section className="card">
-            <h2>{scan.question}</h2>
-            {scan.peopleNotes?.length > 0 && <p className="note">Heads up: {scan.peopleNotes.join(' ')} Maybe leave them out?</p>}
-            <Stepper label="Playing" value={players} min={1} max={25} onChange={setPlayers} />
-            <Stepper label="Seated or referee" value={seated} min={0} max={Math.max(players - 1, 0)} onChange={setSeated} />
-            <button className="primary" onClick={onAnswer}>Let's play</button>
+          <section className="card verdict move">
+            <h2>⛔ Not enough room here</h2>
+            <p>Throwing a ball needs some open space. Clear the floor, move somewhere bigger, then scan again.</p>
           </section>
-          <Progress scan={scan} />
-        </main>
-      )}
-
-      {screen === 'loading-games' && (
-        <main>
+          <button className="primary" onClick={snap}>📷 Scan again</button>
           <Frames urls={frameUrls} report={scan.report} />
-          <Status text="Finishing your games…" />
-          <Progress scan={scan} />
         </main>
       )}
 
-      {screen === 'games' && result && !game && (
+      {screen === 'choose-game' && (
         <main>
-          <Timing clock={clock} waitedMs={result.waitedMs} />
-          {result.beforeYouPlay.length > 0 && (
-            <section className="card warn">
-              <h2>Before you play</h2>
-              <ul>{result.beforeYouPlay.map(t => <li key={t}>{t}</li>)}</ul>
-            </section>
+          <h2>Pick a game</h2>
+          <button className="card game" onClick={() => { logEvent('game_chosen', { game: 'clap' }); setGameType('clap'); setScreen('clap-catch') }}>
+            <h3>👏 Clap Catch</h3>
+            <p>Throw it up, clap as many times as you can, catch it.</p>
+          </button>
+          <button className="card game" onClick={() => { logEvent('game_chosen', { game: 'scavenger' }); setGameType('scavenger'); setScreen('clap-catch') }}>
+            <h3>🔎 Room Scavenger</h3>
+            <p>Clues written from what the AI just found in this room. Find it fast.</p>
+          </button>
+        </main>
+      )}
+
+      {screen === 'clap-catch' && (
+        <ClapCatch players={players} gameType={gameType} scanId={scan?.id} warnings={scan?.report?.beforeYouPlay ?? []} onBack={() => setScreen(scan ? 'choose-game' : 'home')}>
+          {scan?.report && (
+            <details className="card">
+              <summary>What the AI saw{frameUrls.length > 1 ? ` (${frameUrls.length} frames)` : ''}</summary>
+              <Frames urls={frameUrls} report={scan.report} />
+              <p className="meta">{scan.report.scene}</p>
+            </details>
           )}
-          <section className="game-section">
-            <button className="card game" onClick={() => setScreen('clap-catch')}>
-              <h3>👏 Clap Catch</h3>
-              <p>Throw the ball up, clap as many times as you can, catch it. The AI referee watches and listens to every turn.</p>
-              <p className="meta">1–8 players, one at a time · needs a soft ball</p>
-            </button>
-          </section>
-          <details className="card">
-            <summary>What the AI saw{frameUrls.length > 1 ? ` (${frameUrls.length} frames)` : ''}</summary>
-            <Frames urls={frameUrls} report={scan.report} />
-            <p className="meta">{scan.report?.scene}</p>
-          </details>
-        </main>
-      )}
-
-      {screen === 'games' && game && (
-        <main>
-          <button className="link" onClick={() => setGame(null)}>← All games</button>
-          <section className="card">
-            {game.kind === 'experiment' && <span className="tag">AI-invented · untested</span>}
-            <h2>{game.title}</h2>
-            <p>{game.pitch}</p>
-            {game.setup && <p><strong>Setup:</strong> {game.setup}</p>}
-            <p className="meta">Roles: {game.roles.join(', ')}{game.seated_role ? ` · Seated: ${game.seated_role}` : ''}</p>
-            <p className="meta">Uses: {game.uses.join(', ')}</p>
-          </section>
-          {!game.rounds && !game.error && <Status text="Writing the rounds…" />}
-          {game.error && <p className="note">{game.error}</p>}
-          {game.waitedMs != null && <p className="timing">Waited {(game.waitedMs / 1000).toFixed(1)}s for rounds</p>}
-          {game.rounds?.map((r, i) => (
-            <section key={i} className="card">
-              <h3>Round {i + 1} · {r.seconds}s</h3>
-              <p>{r.instruction}</p>
-              <p className="meta">🎥 Record the {r.seconds}s round{r.referee.look_for ? `: ${r.referee.look_for}` : ''}</p>
-              <p className="meta">🧑‍⚖️ {r.referee.rule}</p>
-              <button className="primary" onClick={() => setPlaying({ roundIndex: i })}>▶ Play round {i + 1}</button>
-            </section>
-          ))}
-        </main>
-      )}
-
-      {screen === 'clap-catch' && <ClapCatch players={players - seated} onBack={() => setScreen('games')} />}
-
-      {screen === 'round' && game && playing && (
-        <Round
-          scanId={scan.id}
-          game={game}
-          roundIndex={playing.roundIndex}
-          onBack={() => { setPlaying(null); setScreen('games') }}
-          onNext={() => setPlaying(p => ({ roundIndex: p.roundIndex + 1 }))}
-        />
+        </ClapCatch>
       )}
 
       {screen === 'error' && (
         <main>
           <section className="card warn"><h2>Something went wrong</h2><p>{error}</p></section>
-          <button className="primary" onClick={snap}>📸 Try again</button>
+          <button className="primary" onClick={snap}>📷 Try again</button>
         </main>
       )}
     </div>
@@ -351,17 +313,6 @@ function Label({ box, text, imageWidth }) {
 // "Fragile decorations and candle holders on mantel" → "Fragile decorations…"
 const shortLabel = name => (name.length > 22 ? `${name.slice(0, 20).trimEnd()}…` : name)
 
-function Verdict({ location }) {
-  const v = VERDICT[location.verdict]
-  return (
-    <section className={`card verdict ${location.verdict}`}>
-      <h2>{v.icon} {v.label}</h2>
-      <p>{location.reason}</p>
-      {location.suggestion && <p className="meta">{location.suggestion}</p>}
-    </section>
-  )
-}
-
 function Stepper({ label, value, min, max, onChange }) {
   return (
     <div className="stepper">
@@ -370,20 +321,6 @@ function Stepper({ label, value, min, max, onChange }) {
       <strong>{value}</strong>
       <button onClick={() => onChange(Math.min(max, value + 1))} aria-label={`More ${label}`}>+</button>
     </div>
-  )
-}
-
-function Progress({ scan }) {
-  const steps = [
-    ['Safety check', true],
-    ['Reading the room', scan.reportReady],
-    ['Designing games', scan.gamesReady],
-  ]
-  return (
-    <ul className="progress">
-      {steps.map(([label, done]) => <li key={label} className={done ? 'done' : ''}>{done ? '✓' : '…'} {label}</li>)}
-      {scan.error && <li className="failed">✗ {scan.error}</li>}
-    </ul>
   )
 }
 
@@ -402,8 +339,3 @@ function Status({ text }) {
   return <p className="status"><span className="spinner" /> {text}</p>
 }
 
-// Shown on purpose while we tune speed: how long everything took, and how long you waited.
-function Timing({ clock, waitedMs }) {
-  const total = ((clock.answeredAt - clock.start) / 1000).toFixed(1)
-  return <p className="timing">You answered after {total}s · waited {(waitedMs / 1000).toFixed(1)}s for games</p>
-}

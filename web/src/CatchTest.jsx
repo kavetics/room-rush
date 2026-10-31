@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { refereeCatch, saveTestTrial } from './api.js'
+import { isConnectionError, refereeCatch, saveTestTrial } from './api.js'
 import { playClip, prepareVoice } from './voice.js'
 import { askCameraAndMic, loudnessEnvelope, openMic, report, sampleFrames, startRecordingWithMic, useCamera } from './useCamera.js'
 
@@ -23,12 +23,29 @@ const CLAP_PLAN = [
   ...Array(2).fill({ label: 'caught', style: 'clap after catch', claps: 1, task: '1 clap, catch, clap again', clip: 'clap-after' }),
   ...Array(2).fill({ label: 'dropped', style: 'claps then drop', claps: 2, task: '2 claps, then let it drop', clip: 'clap-drop' }),
 ]
+const HIGH_PLAN = [
+  ...Array(6).fill({ label: 'caught', style: 'high', task: 'Throw it HIGH and catch it', clip: 'high-catch' }),
+  ...Array(4).fill({ label: 'dropped', style: 'high', task: 'Throw it HIGH, let it drop', clip: 'high-drop' }),
+]
 const CALL_TEXT = { caught: 'caught', dropped: 'dropped', unclear: "couldn't tell" }
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 const shuffled = list => list.map(v => [Math.random(), v]).sort((a, b) => a[0] - b[0]).map(([, v]) => v)
 
-export default function CatchTest({ claps = false }) {
+// A phone that drops off Wi-Fi shouldn't cost a turn or hang the test.
+async function withRetries(send, what) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await send()
+    } catch (err) {
+      report(`${what} attempt ${attempt} failed: ${err.name} ${err.message}`)
+      if (!isConnectionError(err) || attempt >= 3) throw err
+      await wait(1000 * attempt)
+    }
+  }
+}
+
+export default function CatchTest({ claps = false, high = false }) {
   // Front camera by default: the screen faces the player, so they can read the task and see the shot.
   const [facing, setFacing] = useState('user')
   const { video, stream, status, error, retry } = useCamera({ facing })
@@ -78,15 +95,13 @@ export default function CatchTest({ claps = false }) {
     setTurn({ ...base, phase: 'read' })
     await Promise.all([playClip(trial.clip), wait(READ_MS)])
 
-    // 2. 3-2-1, then the recording starts on GO.
+    // 2. Mic first, in the quiet. Then 3-2-1, and the recording starts on GO, with no gap.
+    const mic = claps ? await openMic() : null
     for (const n of [3, 2, 1]) {
       setTurn({ ...base, phase: 'count', count: n })
       await Promise.all([playClip(`n${n}`), wait(1000)])
     }
-    // With the mic: wait for it before saying Go, so a slow mic can't cut off the throw.
-    const mic = claps ? await openMic() : null
     playClip('go')
-    await wait(claps ? 700 : 0) // don't record the word "Go" as a clap
     if (control.current.stopping) return
 
     // 3. GO: a visible timer for the turn.
@@ -102,8 +117,8 @@ export default function CatchTest({ claps = false }) {
     setTurn({ ...base, phase: 'check' })
     const envelope = sound ? await loudnessEnvelope(sound) : null
     const [call] = await Promise.all([
-      refereeCatch(frames, envelope).catch(err => { report(`referee failed: ${err.message}`); return null }),
-      saveTestTrial(runId, String(index + 1).padStart(2, '0'), trial, frames, envelope).catch(err => { report(`save failed: ${err.message}`); totals.failed++ }),
+      withRetries(() => refereeCatch(frames, envelope), 'referee').catch(() => null),
+      withRetries(() => saveTestTrial(runId, String(index + 1).padStart(2, '0'), trial, frames, envelope), 'save').catch(() => { totals.failed++ }),
     ])
 
     // 5. The result, then time to get the ball.
@@ -128,7 +143,7 @@ export default function CatchTest({ claps = false }) {
     // Keep the screen on while the phone sits propped up.
     lock.current = await navigator.wakeLock?.request('screen').catch(() => null)
     const runId = new Date().toISOString().replace(/[:.]/g, '-')
-    const trials = shuffled(claps ? CLAP_PLAN : CATCH_PLAN)
+    const trials = shuffled(high ? HIGH_PLAN : claps ? CLAP_PLAN : CATCH_PLAN)
     const totals = { done: 0, right: 0, failed: 0 }
 
     setTurn({ index: 0, total: trials.length, task: 'Step back: whole body in the shot', phase: 'read' })
@@ -156,7 +171,7 @@ export default function CatchTest({ claps = false }) {
 
       <div className="camera-top">
         <span />
-        <span>{claps ? 'Clap' : 'Catch'} test{turn?.index ? ` · turn ${turn.index} of ${turn.total}` : ''}</span>
+        <span>{high ? 'High throw' : claps ? 'Clap' : 'Catch'} test{turn?.index ? ` · turn ${turn.index} of ${turn.total}` : ''}</span>
         <span />
       </div>
 
@@ -200,7 +215,7 @@ function TurnCard({ turn, tally }) {
     read: { className: 'read', title: turn.task, sub: 'Get ready…' },
     count: { className: 'read', title: String(turn.count), sub: turn.task, big: true },
     go: { className: 'go', title: 'GO!', sub: turn.task, big: true },
-    check: { className: 'check', title: 'Checking…', sub: 'The referee is looking' },
+    check: { className: 'check', title: 'Checking…', sub: 'The referee is looking. If Wi-Fi drops, this can take up to a minute.' },
     result: { className: turn.right ? 'right' : 'wrong', title: turn.right ? '✅ Correct' : '❌ Missed', sub: turn.note },
     fetch: { className: 'read', title: 'Get the ball', sub: 'Next turn coming up' },
   }

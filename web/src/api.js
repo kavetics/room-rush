@@ -11,7 +11,15 @@ export async function startScan(frames, views = frames.map(() => 'side')) {
   const body = new FormData();
   frames.forEach((blob, i) => body.append('frames', blob, `room-${i}.jpg`));
   body.append('views', JSON.stringify(views));
-  return json(await fetch('/api/scan', { method: 'POST', body }));
+  // A phone that drops off Wi-Fi can leave this hanging forever, so give up and try again.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await json(await fetch('/api/scan', { method: 'POST', body, signal: AbortSignal.timeout(SCAN_LIMIT_MS) }));
+    } catch (err) {
+      if (!isConnectionError(err)) throw err;
+      if (attempt >= SCAN_ATTEMPTS) throw new Error("Couldn't reach the app from this phone. Check that the phone and the computer are on the same Wi-Fi or hotspot, then try again.");
+    }
+  }
 }
 
 // Live labels while scanning: a quick SAM look at one sweep frame.
@@ -21,33 +29,73 @@ export async function lookAtFrame(blob) {
   return json(await fetch('/api/look', { method: 'POST', body }));
 }
 
+const SCAN_LIMIT_MS = 30000;
+const SCAN_ATTEMPTS = 2;
+const REFEREE_SILENCE_MS = 30000;
+const SAVE_LIMIT_MS = 45000;
+
+/** Connection trouble, as opposed to the server answering with an error: worth sending again. */
+export const isConnectionError = err => err.name === 'TypeError' || err.name === 'AbortError' || err.name === 'TimeoutError';
+
 // Clap Catch: one recorded turn, as frames with their times.
-export async function refereeCatch(frames, envelope, onProgress = () => {}) {
+export async function refereeCatch(frames, envelope, onProgress = () => {}, { review = false } = {}) {
   const body = new FormData();
+  if (review) body.append('review', 'true');
   if (envelope) body.append('envelope', JSON.stringify(envelope));
   frames.forEach((f, i) => body.append('frames', f.blob, `f${i}.jpg`));
   body.append('times', JSON.stringify(frames.map(f => f.t)));
-  const res = await fetch('/api/clap-catch/referee', { method: 'POST', body });
-  if (!res.ok) return json(res); // throws with the server's message
+  // A phone that drops off Wi-Fi can leave a request hanging for minutes with no error.
+  // If nothing has arrived for a while, give up on it so the caller can send it again.
+  const controller = new AbortController();
+  let silence;
+  const stillAlive = () => {
+    clearTimeout(silence);
+    silence = setTimeout(() => controller.abort(), REFEREE_SILENCE_MS);
+  };
+  stillAlive();
+  const res = await fetch('/api/clap-catch/referee', { method: 'POST', body, signal: controller.signal });
+  stillAlive();
+  if (!res.ok) { clearTimeout(silence); return json(res); } // throws with the server's message
   // The server sends one JSON line per step while it works.
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = '';
   let result = null;
   for (;;) {
     const { value, done } = await reader.read();
+    stillAlive();
     if (done) break;
     buffer += value;
     const lines = buffer.split('\n');
     buffer = lines.pop();
     for (const line of lines.filter(Boolean)) {
       const event = JSON.parse(line);
-      if (event.step === 'error') throw new Error(event.error);
+      if (event.step === 'error') { clearTimeout(silence); throw new Error(event.error); }
       if (event.step === 'done') result = event.result;
       else onProgress(event);
     }
   }
-  if (!result) throw new Error('The referee stopped before finishing. Try again.');
+  clearTimeout(silence);
+  if (!result) throw new TypeError('The connection ended before the referee finished.');
   return result;
+}
+
+// Room Scavenger: clues for this room, and judging one turn. An empty scan id gets general clues.
+export async function scavengerClues(scanId, count, seated) {
+  return json(await fetch('/api/scavenger/clues', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scanId, count, seated }),
+    signal: AbortSignal.timeout(SAVE_LIMIT_MS),
+  }));
+}
+
+export async function judgeFind(frames, challenge, seconds) {
+  const body = new FormData();
+  frames.forEach((f, i) => body.append('frames', f.blob, `f${i}.jpg`));
+  body.append('times', JSON.stringify(frames.map(f => f.t)));
+  body.append('challenge', JSON.stringify(challenge));
+  body.append('seconds', String(seconds));
+  return json(await fetch('/api/scavenger/judge', { method: 'POST', body, signal: AbortSignal.timeout(SAVE_LIMIT_MS) }));
 }
 
 // Test mode: save one labeled turn.
@@ -59,7 +107,7 @@ export async function saveTestTrial(run, trial, { label, style, claps }, frames,
   body.append('style', style);
   if (claps != null) body.append('claps', claps);
   body.append('times', JSON.stringify(frames.map(f => f.t)));
-  return json(await fetch(`/api/clap-catch/test/${run}/${trial}`, { method: 'POST', body }));
+  return json(await fetch(`/api/clap-catch/test/${run}/${trial}`, { method: 'POST', body, signal: AbortSignal.timeout(SAVE_LIMIT_MS) }));
 }
 
 export async function getScan(id) {

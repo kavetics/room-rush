@@ -32,8 +32,11 @@ Flow: ① consent → ② scan (in-app camera) → ③ reading your room → ④
 - [ ] Test deploy (Render + Vercel); others hit "model_not_found" on Render
 - [ ] Fix "Caution" on every indoor room
 - [ ] Retest Freeze Dance frame pulling on iPhone (backup game)
-- [ ] Saved rooms: reuse a room's report without rescanning. On the phone only, with a delete button; on reopening, show the photo and hazards and ask "Still look like this?", with Rescan. Suggest a rescan after about 30 days.
+- [ ] Saved rooms (after Muse Image; kept until deleted): reuse a room's report without rescanning. On the phone only, with a delete button; on reopening, show the photo and hazards and ask "Still look like this?", with Rescan. Suggest a rescan after about 30 days.
 - [ ] **Before public launch:** stop saving video and sound, and restore the consent line "Room Rush doesn't save them." Today this is automatic: recording runs only on the dev Mac, and the hosted app already shows the original line.
+- [x] Referee phases, SAM once per turn, VAR on the results screen
+- [x] Seated options for both games (balloon; clues within reach)
+- [ ] Talk to a senior community activities director; test seated mode with real players
 - [ ] Metrics: anonymous game events in Supabase, 👍/👎 on referee calls and clap counts, `npm run metrics` summary. Numbers only: no videos, sound, names or IP addresses. Add a line to the consent screen.
 
 ## Weekend (Sat Oct 31 – Sun Nov 1)

@@ -2,6 +2,13 @@
 
 Things Room Rush could do beyond the hackathon demo. These are **not built**; they're kept here so the pitch and future work stay honest about what exists today.
 
+## Who it's for
+Room Rush brings people together with just a phone, wherever they are.
+- **Seniors in care communities (first focus).** Group activity time, standing or seated. To be shaped with activities directors. No health claims.
+- **Friends and strangers at parties.** Where this started, and where it has been tested.
+- **Grandparents and grandkids.** Family visits where everyone can play, with family supervising.
+- **Schools and childcare (much later, if at all).** Only after child-safety, privacy and legal review. Nothing is built or filmed for children today.
+
 ## Games
 - **Community library.** Players save and share favorite games; popular AI experiments graduate into the classics. Needs accounts, ranking, and **moderation before launch** (user-submitted challenges are a known safety risk).
 - **⭐ Save this game.** A first step toward the library: save a game you liked to replay later.

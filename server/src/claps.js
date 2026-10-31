@@ -4,14 +4,16 @@ const MS_PER_SAMPLE = 10;
 const REFRACTORY_MS = 110; // nobody claps faster than about 9 times a second
 const LOOKBACK_MS = 60;
 const RISE = 3; // a spike is at least 3× louder than the moment before it (speech rises slower)
-const IGNORE_START_MS = 250; // the mic opening and the tail of the word "Go" make a spike here
+const IGNORE_START_MS = 450; // recording starts as the word "Go" plays, which can make a spike here
 const FLOOR_TIMES = 6; // and well above the room's background level
 const PEAK_SHARE = 0.25; // and not tiny compared with the loudest sound in the clip
 
 /** Returns [{ t, strength }] for every clap-like spike, t in seconds from the start of the clip. */
 export function findSpikes(envelope) {
   if (!envelope?.length) return [];
-  const sorted = [...envelope].sort((a, b) => a - b);
+  // Leave the ignored start out of the loudness bar too: a loud pop there would hide every real clap.
+  const skip = IGNORE_START_MS / MS_PER_SAMPLE;
+  const sorted = envelope.slice(envelope.length > skip ? skip : 0).sort((a, b) => a - b);
   const floor = sorted[Math.floor(sorted.length / 2)];
   const peak = sorted.at(-1);
   const threshold = Math.max(floor * FLOOR_TIMES, peak * PEAK_SHARE, 0.01);
@@ -38,7 +40,7 @@ const CATCH_GAP_RATIO = 1.3; // the catch comes after a longer gap than the clap
  * Claps that count: the first quick burst of sound after the throw, up to the catch. The catch time
  * is only rough (frames are 0.25 s apart), so the rhythm of the claps does most of the work:
  * - a long gap ends the burst, so claps after the catch don't count;
- * - a last spike near the catch, later than the rhythm, is the ball hitting the hands.
+ * - a last spike later than the rhythm is the ball hitting the hands.
  * SAM can miss a fast throw: then everything up to the catch counts. With neither time, nothing is counted.
  */
 export function countClaps(envelope, { thrownAt, caughtAt }) {
@@ -52,7 +54,8 @@ export function countClaps(envelope, { thrownAt, caughtAt }) {
     if (counted.length && spike.t - counted.at(-1).t >= BURST_GAP) break;
     counted.push(spike);
   }
-  if (caughtAt != null && counted.length >= 2 && Math.abs(counted.at(-1).t - caughtAt) <= CATCH_SOUND_WINDOW) {
+  // The last sound coming later than the claps' own rhythm is the ball landing in the hands.
+  if (caughtAt != null && counted.length >= 3) {
     const gaps = counted.slice(1).map((s, i) => s.t - counted[i].t);
     const lastGap = gaps.at(-1);
     const rhythm = gaps.length > 1 ? Math.min(...gaps.slice(0, -1)) : null;

@@ -18,7 +18,7 @@ export const onReport = listener => { reportListener = listener }
 export function report(message) {
   if (!import.meta.env.DEV) return
   reportListener?.(message)
-  fetch('/api/client-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) }).catch(() => {})
+  fetch('/api/client-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }), signal: AbortSignal.timeout(5000) }).catch(() => {})
 }
 if (import.meta.env.DEV) {
   report(`page ${location.search || '/'} · secure ${window.isSecureContext} · mediaDevices ${Boolean(navigator.mediaDevices)} · ${navigator.userAgent}`)

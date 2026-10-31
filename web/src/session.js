@@ -13,10 +13,12 @@ function flush() {
   if (!pending.length) return
   const events = pending
   pending = []
+  // Time limits: saves run one at a time, so one hung request would block every save after it.
   sending = sending.then(() => fetch(`/api/sessions/${id}/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ events }),
+    signal: AbortSignal.timeout(10000),
   })).then(res => {
     if (!res.ok) throw new Error('not saved')
   }).catch(() => {
@@ -44,7 +46,7 @@ export function saveTurn({ game, round, player, name, attempt, clip, call, failu
   if (clip.blob) body.append('video', clip.blob, clip.blob.type.includes('mp4') ? 'turn.mp4' : 'turn.webm')
   clip.frames.forEach((f, i) => body.append('frames', f.blob, `f${i}.jpg`))
   const turn = `g${game}-r${round + 1}-p${player + 1}-a${attempt}`
-  sending = sending.then(() => fetch(`/api/sessions/${id}/turns/${turn}`, { method: 'POST', body }))
+  sending = sending.then(() => fetch(`/api/sessions/${id}/turns/${turn}`, { method: 'POST', body, signal: AbortSignal.timeout(60000) }))
     .then(res => logEvent('turn_saved', { turn, ok: res.ok }))
     .catch(err => logEvent('turn_save_failed', { turn, error: err.message }))
 }

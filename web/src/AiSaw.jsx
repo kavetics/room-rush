@@ -25,15 +25,15 @@ export function LiveAnalysis({ frames, progress }) {
         </div>
       )}
       <ul className="ai-steps">
-        <Step done={progress.measured} active={!progress.measured}>
-          SAM 3.1 finding the ball: frame {progress.frames.length} of {frames.length}, ball in {progress.frames.filter(f => f.ball).length}
+        <Step done={progress.identified} active={!progress.identified}>
+          {progress.identified ? `Muse Spark and SAM 3.1 found the player and the ${progress.identified.object}` : 'Finding the player and what they\'re throwing'}
         </Step>
+        {progress.spark && <Step done={progress.call} active={!progress.call}>Muse Spark following the ball through {progress.spark.frames} frames</Step>}
         {progress.measured && (
           <Step done>
-            {progress.measured.thrownAt != null ? `Code found the throw at ${progress.measured.thrownAt}s, highest at ${progress.measured.peakAt}s` : 'Code did not find a clear throw'}
+            {progress.measured.thrownAt != null ? `Throw at ${progress.measured.thrownAt}s; counting claps from there` : 'No clear throw found'}
           </Step>
         )}
-        {progress.spark && <Step done={progress.call} active={!progress.call}>Muse Spark reviewing {progress.spark.frames} frames</Step>}
         {progress.call && <Step done>Muse Spark: {progress.call.reason}</Step>}
       </ul>
     </section>
@@ -78,6 +78,7 @@ export function TurnReplay({ clipUrl, frames, call, envelope }) {
 
   const nearest = track.reduce((best, f) => (!best || Math.abs(f.t - time) < Math.abs(best.t - time) ? f : best), null)
   const trail = track.filter(f => f.ball && f.t <= time && f.t > time - 1)
+  const tracked = track.length > 1 // SAM only follows the ball through a turn in a VAR review
   const center = b => `${(b.x1 + b.x2) / 2},${(b.y1 + b.y2) / 2}`
   const seek = t => { if (video.current) video.current.currentTime = t }
 
@@ -88,9 +89,9 @@ export function TurnReplay({ clipUrl, frames, call, envelope }) {
         <video ref={video} src={clipUrl} controls playsInline autoPlay muted loop />
         {size && (
           <svg viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="none">
-            {nearest && box(nearest.person, 'box-person')}
+            {tracked && nearest && box(nearest.person, 'box-person')}
             {trail.length > 1 && <polyline className="ball-trail" points={trail.map(f => center(f.ball)).join(' ')} />}
-            {nearest && box(nearest.ball, 'box-ball')}
+            {tracked && nearest && box(nearest.ball, 'box-ball')}
           </svg>
         )}
         <div className="replay-events">
@@ -104,12 +105,12 @@ export function TurnReplay({ clipUrl, frames, call, envelope }) {
         {events.map(e => <button key={`${e.label}${e.t}`} className="mark" style={{ left: `${Math.min(100, (e.t / length) * 100)}%` }} onClick={() => seek(e.t)} aria-label={`Jump to ${e.label}`}>{e.label.split(' ')[0]}</button>)}
       </div>
       {envelope?.length > 0 && <AudioMap envelope={envelope} heard={call.claps?.heard ?? []} counted={call.claps?.counted ?? []} time={time} onSeek={seek} />}
-      <p className="meta">Yellow: the ball, as SAM 3.1 found it · White: the player · Purple ticks: frames Muse Spark reviewed. Tap a marker to jump there.</p>
+      <p className="meta">{tracked ? 'Yellow: the ball, as SAM 3.1 found it · White: the player · ' : ''}Purple ticks: frames Muse Spark reviewed. Tap a marker to jump there.</p>
 
       <ul className="ai-steps">
-        <li className="done">✓ SAM 3.1 looked {call.timing.samCalls} times in {(call.timing.samMs / 1000).toFixed(1)}s · ball in {call.evidence.framesWithBall} frames</li>
+        <li className="done">✓ {call.identified?.object ? `Found the player and the ${call.identified.object}: ` : ''}SAM 3.1 looked {call.timing.samCalls} times</li>
         {call.claps && <li className="done">✓ Plain code heard {call.claps.heard.length} sharp sounds, counted {call.claps.count ?? 0} between throw and catch</li>}
-        {call.timing.framesSentToSpark > 0 && <li className="done">✓ Muse Spark reviewed {call.timing.framesSentToSpark} frames in {(call.timing.sparkMs / 1000).toFixed(1)}s (confidence {Math.round(call.confidence * 100)}%)</li>}
+        {call.timing.framesSentToSpark > 0 && <li className="done">✓ Muse Spark followed the ball through {call.timing.framesSentToSpark} frames in {(call.timing.sparkMs / 1000).toFixed(1)}s (confidence {Math.round(call.confidence * 100)}%)</li>}
       </ul>
       <details>
         <summary>The raw numbers</summary>

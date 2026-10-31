@@ -149,6 +149,11 @@ export async function getRound(id, gameIndex, roundIndex) {
   return round;
 }
 
+/** The verified room report, for games that build on it. Null if it's gone or still being written. */
+export function roomReport(id) {
+  return scans.get(id)?.report ?? null;
+}
+
 export function getScan(id) {
   const scan = scans.get(id);
   return scan && publicView(scan);

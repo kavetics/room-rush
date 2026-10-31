@@ -2,9 +2,9 @@ import { report } from './useCamera.js'
 
 // Voice instructions. All clips load into memory up front, and the game's timing never waits on them:
 // if a clip can't play, the sound is lost, not the rhythm.
-const CLIPS = ['cant-tell', 'catch', 'catch-chest', 'catch-one', 'caught', 'checking', 'clap-1', 'clap-2', 'clap-3', 'clap-after', 'clap-drop', 'count-0', 'count-1', 'count-10', 'count-2', 'count-3', 'count-4', 'count-5', 'count-6', 'count-7', 'count-8', 'count-9', 'done', 'drop', 'drop-pick', 'dropped', 'finished', 'game-over', 'get-ball', 'getting-results', 'go', 'hear', 'n1', 'n2', 'n3', 'next-player', 'reset', 'results-ready', 'right', 'round-over', 'start', 'stop', 'throw', 'wrong', 'your-turn']
+const CLIPS = ['cant-tell', 'catch', 'catch-chest', 'catch-one', 'caught', 'checking', 'clap-1', 'clap-2', 'clap-3', 'clap-after', 'clap-drop', 'count-0', 'count-1', 'count-10', 'count-2', 'count-3', 'count-4', 'count-5', 'count-6', 'count-7', 'count-8', 'count-9', 'done', 'drop', 'drop-pick', 'dropped', 'finished', 'game-over', 'get-ball', 'getting-results', 'go', 'hear', 'rules', 'rules-seated', 'scav-rules', 'scav-rules-seated', 'high-catch', 'high-drop', 'n1', 'n2', 'n3', 'next-player', 'reset', 'results-ready', 'right', 'round-over', 'start', 'stop', 'throw', 'wrong', 'your-turn']
 const START_LIMIT_MS = 400 // not playing by now: switch to Web Audio
-const MAX_CLIP_MS = 6000
+const MAX_CLIP_MS = 12000
 
 const voice = typeof Audio === 'undefined' ? null : new Audio()
 let context = null

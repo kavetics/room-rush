@@ -5,7 +5,8 @@ import multer from 'multer';
 import { toDataUrl } from './meta.js';
 import { readRoom } from './room.js';
 import { referee } from './referee.js';
-import { startScan, getScan, answerPlayers, getRounds, getRound } from './scan.js';
+import { startScan, getScan, answerPlayers, getRounds, getRound, roomReport } from './scan.js';
+import { judgeFind, writeClues } from './scavenger.js';
 import { refereeRound } from './roundReferee.js';
 import { lookAtFrame } from './look.js';
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
@@ -79,6 +80,23 @@ app.post('/api/scan/:id/games/:game/rounds/:round/referee', upload.array('frames
   } catch (err) { next(err); }
 });
 
+// Room Scavenger: clues written from what the scan verified in this room.
+app.post('/api/scavenger/clues', async (req, res, next) => {
+  try {
+    const count = Math.min(40, Math.max(1, Number(req.body.count) || 1));
+    res.json(await writeClues(roomReport(req.body.scanId), count, { seated: Boolean(req.body.seated) }));
+  } catch (err) { next(err); }
+});
+
+// Room Scavenger: one recorded turn, judged against its clue.
+app.post('/api/scavenger/judge', upload.array('frames', 70), async (req, res, next) => {
+  try {
+    const times = JSON.parse(req.body.times || '[]');
+    if (!req.files?.length || times.length !== req.files.length) throw Object.assign(new Error('Send frames with matching times.'), { status: 400 });
+    res.json(await judgeFind(req.files.map((f, i) => ({ t: times[i], dataUrl: toDataUrl(f.buffer, f.mimetype) })), { challenge: JSON.parse(req.body.challenge), seconds: Number(req.body.seconds) }));
+  } catch (err) { next(err); }
+});
+
 // Clap Catch: one recorded turn, as frames with their times in seconds.
 app.post('/api/clap-catch/referee', upload.array('frames', 70), async (req, res, next) => {
   try {
@@ -91,7 +109,7 @@ app.post('/api/clap-catch/referee', upload.array('frames', 70), async (req, res,
     res.flushHeaders();
     const send = line => res.write(`${JSON.stringify(line)}\n`);
     try {
-      const result = await refereeCatch(req.files.map((f, i) => ({ t: times[i], dataUrl: toDataUrl(f.buffer, f.mimetype) })), { envelope, onProgress: send });
+      const result = await refereeCatch(req.files.map((f, i) => ({ t: times[i], dataUrl: toDataUrl(f.buffer, f.mimetype) })), { envelope, onProgress: send, review: req.body.review === 'true' });
       send({ step: 'done', result });
     } catch (err) {
       console.error(err);

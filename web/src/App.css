@@ -297,3 +297,6 @@ figcaption .moving { color: var(--stop); font-weight: 700; }
 .voice-row { margin-top: 10px; width: 100%; }
 .voice-log { font-size: 0.8rem; overflow-wrap: anywhere; }
 .voice-test h1 { margin: 0; }
+.resume { margin-top: 24px; }
+.home .secondary { width: 100%; }
+.var-button { width: 100%; margin: 6px 0; }

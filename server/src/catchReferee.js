@@ -1,6 +1,7 @@
-// Clap Catch referee: did the player catch the ball? There's no "hold the pose" rule, so the catch
-// can happen anywhere in the clip. SAM 3.1 follows the ball on every frame, plain code finds the
-// throw and where the ball ended up, and Muse Spark rules from the frames around the landing.
+// Clap Catch referee. A turn is a sequence of phases: ready (ball in hands) → throw → in the air →
+// caught or dropped. SAM 3.1 outlines the player and the object once. Muse Spark labels what the ball is
+// doing in every frame. Plain code reads those labels, finds the phases, and counts the claps between
+// the throw and the catch. A VAR review also runs SAM on every frame, as extra evidence for Muse Spark.
 import { segment, sparkJSON } from './meta.js';
 import { countClaps, findSpikes } from './claps.js';
 
@@ -8,32 +9,74 @@ const BALL_CONFIDENCE = 0.3; // a small moving ball scores low; code filters the
 const MAX_SAM_AT_ONCE = 16;
 const ABOVE_HEAD = 0.05; // ball height relative to the player: 0 = top of head, 1 = feet
 const NEAR_FLOOR = 0.85;
-const WINDOW_SECONDS = 3; // dense frames from just before the action
-const LEAD_IN_SECONDS = 0.5;
-const MAX_SPARK_FRAMES = 16;
+const HIGH_ON_PLAYER = 0.35; // ball this high on the player, then gone: it probably left the top of the frame
+const OUT_OF_FRAME_SECONDS = 0.75;
 
-const CATCH_SCHEMA = {
+const BALL_STATES = ['in_hands', 'in_air', 'out_of_frame', 'on_floor', 'not_visible'];
+
+const IDENTIFY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['call', 'caught_at_seconds', 'reason', 'confidence'],
+  required: ['player', 'object', 'object_sam_prompt'],
   properties: {
-    call: { type: 'string', enum: ['caught', 'dropped', 'unclear'] },
-    caught_at_seconds: { type: 'number', description: 'Time of the catch. Use -1 if it was not caught.' },
-    reason: { type: 'string', description: 'One short, friendly sentence spoken to the player as "you". Never use he, she or other descriptions of the person.' },
+    player: { type: 'string', description: 'Where the person about to throw is, and their clothing. Never their identity, age or appearance otherwise.' },
+    object: { type: 'string', description: 'What they are holding to throw, e.g. "small blue ball".' },
+    object_sam_prompt: { type: 'string', description: 'Simple generic noun for it, e.g. "ball".' },
+  },
+};
+
+const TIMELINE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['frames', 'reason', 'confidence'],
+  properties: {
+    frames: {
+      type: 'array',
+      description: 'One entry per frame, in order.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['t', 'ball'],
+        properties: { t: { type: 'number' }, ball: { type: 'string', enum: BALL_STATES } },
+      },
+    },
+    reason: { type: 'string', description: 'One short, friendly sentence spoken to the player as "you", saying what happened. Never use he, she or other descriptions of the person.' },
     confidence: { type: 'number', minimum: 0, maximum: 1 },
   },
 };
 
 const SYSTEM = [
-  'You referee a party game. A player throws a small yellow ball up and tries to catch it.',
-  'caught: the ball came down into the hands, or was trapped against the body, without touching the floor first.',
-  'dropped: the ball touched the floor or was missed. Picking it up afterwards is still dropped.',
-  'Other people may be in the frame: judge only the person who throws the ball.',
-  'The ball is small and fast: it is often blurred, hidden in the hands, or missing from a frame, and the exact moment of the catch may fall between frames.',
-  'So judge the whole sequence: a ball held in the hands after the throw, never seen low or on the floor, is caught.',
-  'A ball seen on or near the floor or rolling away, or a player bending down to the floor to get it, is dropped, even if they hold it afterwards.',
-  'unclear: only when the frames show neither. Do not guess, but do not ask for a perfect view of the catch.',
+  'You referee a party game. One player, standing or seated, throws a small object or balloon up, claps, and tries to catch it. Label what the object is doing in each frame.',
+  'in_hands: held by the player, or trapped against their body or lap by their hands. in_air: visibly in the air.',
+  'out_of_frame: it left the frame, usually out the top on a high throw. High throws are the best throws, and leaving the frame never counts against the player.',
+  'on_floor: on or just above the floor, or rolling away. A low catch close to the floor is still in_hands.',
+  'not_visible: in frame but you cannot tell where it is. The object is small and fast, and is often blurred or hidden by hands.',
+  'Other people may be in the frame: only follow the player. Use the sequence: if it was thrown and later is in their hands without touching the floor, label those frames that way.',
 ].join(' ');
+
+/** Plain-code rules that turn the frame labels into phases. Only the first throw counts. */
+export function findPhases(labels) {
+  const inFlight = l => l.ball === 'in_air' || l.ball === 'out_of_frame';
+  const first = labels.findIndex(inFlight);
+  if (first < 0) return { call: labels.some(l => l.ball === 'on_floor') ? 'dropped' : 'unclear', thrownAt: null, endedAt: null, noThrow: true };
+  // The throw starts at the last frame in hands; a clip can begin with the ball already up.
+  const thrownAt = first > 0 ? labels[first - 1].t : labels[0].t;
+  for (let i = first + 1; i < labels.length; i++) {
+    if (labels[i].ball === 'on_floor') return { call: 'dropped', thrownAt, endedAt: labels[i].t };
+    if (labels[i].ball === 'in_hands') {
+      // Hands near the ball for one frame, with it still flying after, isn't a catch yet.
+      const stillFlying = i + 1 < labels.length && inFlight(labels[i + 1]);
+      if (!stillFlying) return { call: 'caught', thrownAt, endedAt: labels[i].t };
+    }
+  }
+  return { call: 'unclear', thrownAt, endedAt: null };
+}
+
+const FALLBACK_REASONS = {
+  caught: 'You caught it cleanly!',
+  dropped: 'The ball hit the floor before you caught it.',
+  unclear: "I couldn't tell where the ball ended up.",
+};
 
 async function inPool(items, work) {
   const results = new Array(items.length);
@@ -65,8 +108,21 @@ export function measureBall(track) {
   });
 
   const seen = path.filter(p => p.height != null);
-  const peak = seen.reduce((best, p) => (!best || p.height < best.height ? p : best), null);
-  const thrown = Boolean(peak && peak.height < ABOVE_HEAD);
+  const highest = seen.reduce((best, p) => (!best || p.height < best.height ? p : best), null);
+  // A high throw leaves the frame: the ball is rising, disappears for a while, then may come back.
+  let leftFrameAt = null;
+  let cameBackAt = null;
+  seen.forEach((p, i) => {
+    const next = seen[i + 1];
+    const endOfClip = path.at(-1).t;
+    const gap = (next?.t ?? endOfClip) - p.t;
+    if (leftFrameAt == null && p.height < HIGH_ON_PLAYER && gap >= OUT_OF_FRAME_SECONDS && (i === 0 || seen[i - 1].height >= p.height)) {
+      leftFrameAt = p.t;
+      cameBackAt = next?.t ?? null;
+    }
+  });
+  const peak = leftFrameAt != null ? seen.find(p => p.t === leftFrameAt) : highest;
+  const thrown = Boolean(peak && (peak.height < ABOVE_HEAD || leftFrameAt != null));
   const end = seen.at(-1) ?? null;
   // The throw starts where the ball last stopped rising on its way to the peak.
   let thrownAt = null;
@@ -83,124 +139,133 @@ export function measureBall(track) {
     thrown,
     peakAt: thrown ? peak.t : null,
     thrownAt,
+    leftFrameAt,
+    cameBackAt,
     endHeight: end?.height ?? null,
     endedNearFloor: end ? end.height >= NEAR_FLOOR : null,
     wasNearFloor: seen.some(p => p.height >= NEAR_FLOOR),
   };
 }
 
-// Dense frames from where the action starts (where the catch happens), then a few to the end of the clip.
-function pickFrames(frames, actionAt) {
-  const from = Math.max(0, (actionAt ?? 0) - LEAD_IN_SECONDS);
-  const after = frames.filter(f => f.t >= from);
-  const near = after.filter(f => f.t <= after[0].t + WINDOW_SECONDS);
-  const rest = after.slice(near.length);
-  const room = Math.max(0, MAX_SPARK_FRAMES - near.length);
-  const later = rest.filter((_, i) => rest.length <= room || (i % Math.ceil(rest.length / Math.max(1, room))) === 0).slice(0, room);
-  if (rest.length && !later.includes(rest.at(-1))) later[Math.max(0, later.length - 1)] = rest.at(-1);
-  return [...near, ...later].slice(0, MAX_SPARK_FRAMES);
-}
-
-/** frames: [{ t, dataUrl }] in time order. */
-export async function refereeCatch(frames, { envelope, onProgress = () => {} } = {}) {
+/** frames: [{ t, dataUrl }] in time order. review: a VAR request, which also tracks with SAM on every frame. */
+export async function refereeCatch(frames, { envelope, onProgress = () => {}, review = false } = {}) {
   const started = Date.now();
-  // One failed look is survivable. But if the API is refusing calls (billing, outage), say so:
-  // "I couldn't see the ball" would blame the player for our problem.
+  let sparkMs = 0;
+  let samMs = 0;
+  let samCalls = 0;
   let lookFailures = 0;
   let lastLookError = null;
-  const look = (f, prompt, minConfidence) => segment(f.dataUrl, prompt, { minConfidence })
-    .then(r => r.objects).catch(err => {
+  // One failed look is survivable. But if the API is refusing calls (billing, outage), say so:
+  // "I couldn't see the ball" would blame the player for our problem.
+  const look = async (f, prompt, minConfidence) => {
+    const begun = Date.now();
+    samCalls += 1;
+    try {
+      return (await segment(f.dataUrl, prompt, { minConfidence })).objects;
+    } catch (err) {
       lookFailures += 1;
       lastLookError = err.message;
       return [];
-    });
+    } finally {
+      samMs = Math.max(samMs, Date.now() - begun);
+    }
+  };
+  const biggest = list => list.slice().sort((a, b) => b.width * b.height - a.width * a.height)[0]?.box ?? null;
 
-  // The ball on every frame; the player moves less, so every other frame is enough.
-  const samStart = Date.now();
-  const [balls, people] = await Promise.all([
-    inPool(frames, (f, index) => look(f, 'ball', BALL_CONFIDENCE).then(found => {
-      onProgress({ step: 'frame', index, t: f.t, total: frames.length, ball: found[0]?.box ?? null });
-      return found;
-    })),
-    inPool(frames.filter((_, i) => i % 2 === 0), f => look(f, 'person', 0.5)),
+  // 1. Who is playing, and with what? The object can be any color, size or shape.
+  let identified = { player: null, object: 'ball', object_sam_prompt: 'ball' };
+  try {
+    const { result, ms } = await sparkJSON({
+      system: 'You help referee a party game: a player, standing or seated, is about to throw a small object or balloon up and catch it.',
+      prompt: 'Who is about to throw, and what are they holding?',
+      images: [frames[0].dataUrl, frames[Math.min(2, frames.length - 1)].dataUrl],
+      schemaName: 'who_and_what',
+      schema: IDENTIFY_SCHEMA,
+    });
+    identified = result;
+    sparkMs += ms;
+  } catch (err) {
+    // Not needed to judge the turn, unless the API is down; then the next call reports it.
+  }
+  const [objectAtStart, peopleAtStart] = await Promise.all([
+    look(frames[0], identified.object_sam_prompt, BALL_CONFIDENCE),
+    look(frames[0], 'person', 0.5),
   ]);
-  const samMs = Date.now() - samStart;
-  const samCalls = balls.length + people.length;
-  if (lookFailures > samCalls / 2) {
-    throw new Error(`The AI service refused the referee's request: ${lastLookError}`);
+  if (lookFailures === samCalls && lastLookError) throw new Error(`The AI service refused the referee's request: ${lastLookError}`);
+  const start = { object: biggest(objectAtStart), player: biggest(peopleAtStart) };
+  onProgress({ step: 'identified', player: identified.player, object: identified.object });
+  onProgress({ step: 'frame', index: 0, t: frames[0].t, total: 1, ball: start.object });
+
+  // 2. VAR only: SAM follows the object through every frame, as evidence and for the replay.
+  let measured = null;
+  if (review) {
+    const [balls, people] = await Promise.all([
+      inPool(frames, (f, index) => look(f, identified.object_sam_prompt, BALL_CONFIDENCE).then(found => {
+        onProgress({ step: 'frame', index, t: f.t, total: frames.length, ball: found[0]?.box ?? null });
+        return found;
+      })),
+      inPool(frames.filter((_, i) => i % 2 === 0), f => look(f, 'person', 0.5)),
+    ]);
+    if (lookFailures > samCalls / 2) throw new Error(`The AI service refused the referee's request: ${lastLookError}`);
+    const personAt = frames.map((_, i) => {
+      const near = [i - i % 2, i - i % 2 + 2, i - i % 2 - 2].map(n => people[n / 2]).find(p => p?.length);
+      return near ? biggest(near) : null;
+    });
+    measured = measureBall(frames.map((f, i) => ({ t: f.t, balls: balls[i].map(o => o.box), person: personAt[i] })));
   }
 
-  const biggest = list => list.slice().sort((a, b) => b.width * b.height - a.width * a.height)[0]?.box ?? null;
-  const personAt = frames.map((_, i) => {
-    const near = [i - i % 2, i - i % 2 + 2, i - i % 2 - 2].map(n => people[n / 2]).find(p => p?.length);
-    return near ? biggest(near) : null;
-  });
-  const track = frames.map((f, i) => ({ t: f.t, balls: balls[i].map(o => o.box), person: personAt[i] }));
-  const measured = measureBall(track);
-  const evidence = {
-    thrown: measured.thrown,
-    thrownAt: measured.thrownAt,
-    peakAt: measured.peakAt,
-    framesWithBall: `${measured.framesWithBall} of ${frames.length}`,
-    endHeight: measured.endHeight,
-    endedNearFloor: measured.endedNearFloor,
-    wasNearFloor: measured.wasNearFloor,
-    // Height of the ball on the player: 0 = top of head, 1 = feet, below 0 = above the head.
-    path: measured.path.filter(p => p.height != null).map(p => `${p.t}s:${p.height}`).join(' '),
-  };
-
-  onProgress({ step: 'measured', thrownAt: measured.thrownAt, peakAt: measured.peakAt, framesWithBall: measured.framesWithBall, total: frames.length });
-
-  const timing = { samMs, samCalls, sparkMs: 0, totalMs: 0, framesSentToSpark: 0 };
-  // Everything the report needs to replay what the AI saw, in step with the video.
-  const report = {
-    track: measured.path.map(({ t, ball, person, height }) => ({ t, ball, person, height })),
-    thrownAt: measured.thrownAt,
-    peakAt: measured.peakAt,
-    sparkTimes: [],
-  };
-  // Even when the turn can't be judged, show what was heard.
-  const heardOnly = envelope ? { count: null, heard: findSpikes(envelope).map(s => s.t), counted: [] } : null;
-  const finish = fields => ({ claps: heardOnly, ...fields, evidence, report, timing: { ...timing, totalMs: Date.now() - started } });
-
-  // No player means nothing to judge. A missing ball is different: SAM often can't find a small, fast
-  // ball, but Muse Spark can still follow it across the frames.
-  if (!measured.framesWithPerson) return finish({ call: 'unclear', reason: "I couldn't see the player. Step back so your whole body is in the shot.", confidence: 1, caughtAt: null, closeCall: false });
-
-  // SAM can miss the throw, so the first clap also marks where the action starts.
-  const firstSound = envelope ? findSpikes(envelope)[0]?.t : undefined;
-  const actionAt = Math.min(measured.peakAt ?? Infinity, firstSound ?? Infinity);
-  const chosen = pickFrames(frames, Number.isFinite(actionAt) ? actionAt : 0);
-  timing.framesSentToSpark = chosen.length;
-  report.sparkTimes = chosen.map(f => f.t);
-  onProgress({ step: 'spark', frames: chosen.length, times: report.sparkTimes });
-  const { result, ms } = await sparkJSON({
+  // 3. Muse Spark says what the object is doing in each frame.
+  onProgress({ step: 'spark', frames: frames.length, times: frames.map(f => f.t) });
+  const { result: timeline, ms } = await sparkJSON({
     system: SYSTEM,
     prompt: [
-      `These ${chosen.length} frames are in time order, at ${chosen.map(f => `${f.t}s`).join(', ')}.`,
-      `Measured from every frame of the clip: ${JSON.stringify(evidence)}. The ball may be missing or wrong in some frames, so trust what you see.`,
-      'Did the player catch the ball?',
-    ].join('\n'),
-    images: chosen.map(f => f.dataUrl),
-    schemaName: 'catch_call',
-    schema: CATCH_SCHEMA,
-    effort: 'medium',
+      `The player: ${identified.player ?? 'the person who throws'}. The object: ${identified.object}.`,
+      `There are ${frames.length} frames in time order, at ${frames.map(f => `${f.t}s`).join(', ')}.`,
+      measured && `A tracker measured the object's height on the player (0 = top of head, 1 = feet; it often loses the object, so trust what you see): ${measured.path.filter(p => p.height != null).map(p => `${p.t}s:${p.height}`).join(' ') || 'nothing found'}.`,
+      'Label each frame, then say in one sentence what happened.',
+    ].filter(Boolean).join('\n'),
+    images: frames.map(f => f.dataUrl),
+    schemaName: 'ball_timeline',
+    schema: TIMELINE_SCHEMA,
+    effort: review ? 'high' : (process.env.CATCH_EFFORT || 'medium'),
   });
-  timing.sparkMs = ms;
+  sparkMs += ms;
 
-  // Plain code counts the claps, between the throw and the catch. A drop scores 0 whatever was clapped.
-  const caughtAt = result.call === 'caught' && result.caught_at_seconds >= 0 ? result.caught_at_seconds : null;
-  onProgress({ step: 'call', call: result.call, reason: result.reason });
-  const claps = envelope ? countClaps(envelope, { thrownAt: measured.thrownAt, caughtAt }) : null;
+  // 4. Plain code: labels → phases → claps between the throw and the catch.
+  const labels = frames.map((f, i) => ({ t: f.t, ball: timeline.frames[i]?.ball ?? 'not_visible' }));
+  const phases = findPhases(labels);
+  onProgress({ step: 'measured', thrownAt: phases.thrownAt, peakAt: null, framesWithBall: labels.filter(l => l.ball !== 'not_visible').length, total: frames.length });
+  onProgress({ step: 'call', call: phases.call, reason: timeline.reason });
+  const heard = envelope ? findSpikes(envelope) : [];
+  const caughtAt = phases.call === 'caught' ? phases.endedAt : null;
+  const claps = envelope && phases.thrownAt != null ? countClaps(envelope, { thrownAt: phases.thrownAt, caughtAt: phases.endedAt }) : null;
 
-  return finish({
-    claps: claps && { count: claps.count, heard: claps.spikes.map(s => s.t), counted: claps.counted.map(s => s.t) },
-    score: result.call === 'caught' ? (claps?.count ?? null) : 0,
-    call: result.call,
-    reason: result.reason,
-    confidence: result.confidence,
+  const report = {
+    track: measured ? measured.path.map(({ t, ball, person, height }) => ({ t, ball, person, height })) : [{ t: frames[0].t, ball: start.object, person: start.player }],
+    thrownAt: phases.thrownAt,
+    peakAt: null,
+    sparkTimes: frames.map(f => f.t),
+    labels,
+  };
+  const spoken = /(drop|miss|floor|slip)/i.test(timeline.reason) === (phases.call === 'dropped') && phases.call !== 'unclear';
+  return {
+    call: phases.call,
+    reason: spoken ? timeline.reason : FALLBACK_REASONS[phases.call],
+    confidence: timeline.confidence,
     caughtAt,
-    // The ball ending on the floor after a "catch" is suspicious; worth flagging, not overruling.
-    closeCall: result.call === 'caught' && measured.endedNearFloor === true,
-  });
+    score: phases.call === 'caught' ? (claps?.count ?? null) : 0,
+    claps: envelope ? { count: claps?.count ?? null, heard: heard.map(s => s.t), counted: claps?.counted.map(s => s.t) ?? [] } : null,
+    closeCall: false,
+    review,
+    identified,
+    evidence: {
+      thrown: phases.thrownAt != null,
+      thrownAt: phases.thrownAt,
+      endedAt: phases.endedAt,
+      framesWithBall: `${labels.filter(l => l.ball !== 'not_visible').length} of ${frames.length}`,
+      labels: labels.map(l => `${l.t}:${l.ball}`).join(' '),
+    },
+    report,
+    timing: { samCalls, samMs, sparkMs, framesSentToSpark: frames.length, totalMs: Date.now() - started },
+  };
 }

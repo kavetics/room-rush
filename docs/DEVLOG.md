@@ -215,3 +215,36 @@ Session recording found it right away. Meta's API started answering 402 "Billing
 ### Referee fixes from the first reviewed game with players
 Two of three real turns came back "couldn't tell". SAM not finding the small ball no longer skips Muse Spark; frames are chosen from the first clap or the throw, whichever is earlier (16 frames, up from 12); Muse Spark is told it won't see every moment. Spikes in the first 0.25 s are ignored (the mic opening).
 - Clap counting now follows the claps' rhythm (a long gap ends the burst; a late last spike near the catch is the ball landing), because Muse Spark's catch time shifts between runs. Reran saved turns: catch 33 of 33, exact claps 11 of 11. Those turns also guided the tuning, so this needs fresh turns to confirm. Turns from other players aren't labeled yet.
+
+### Post-scan flow, resume, shorter turns
+- "How many players?" appears as soon as the scan finishes; the room check runs behind it. Games talk is gone: Clap Catch opens next. One player is allowed, with a note. Clearly unsafe locations and rooms rated small are blocked, with a rescan; hazards are warnings.
+- Turns are 6 s: catches so far came by about 4 s, and it means 40% fewer frames. The mic opens after "1", which caused a blip in the voice.
+- A game survives a page reload: progress and clips are stored on the phone (IndexedDB), with a "Resume your game?" prompt. A turn mid-recording is lost, so that player goes again; unchecked turns get checked on resume.
+
+### Recording started too late
+Two of three players had thrown before recording began (first frame already mid-play; no claps recorded), because the mic opened after "1", leaving about 2 s before recording. The mic now opens before the countdown, and recording starts as "1" ends, on "Go". Sounds in the first 0.45 s are ignored as the word "Go".
+
+### High throws leaving the frame
+Owner's point: the highest throws earn the most claps, so a ball leaving the frame must never count against the player. Muse Spark is told it's normal, and what matters is the ball being in the hands afterwards. Code now detects a rising ball that disappears, as a throw, and passes when it left and came back. `?test=high` added: 10 labeled high throws.
+
+### Hung test: the phone dropping off Wi-Fi
+A test froze with about 2 minutes of silence, then a burst of logs and "Load failed", like the earlier 4-minute stall. From the Mac, pings to the router were 15 of 15, and to the phone 19 of 30 ("No route to host"). Requests could wait indefinitely. Added time limits with retries: referee (30 s of silence, 4 tries), test saves, session saves and logs.
+- Scan upload had no time limit: in a new location, the phone lost its link to the Mac and the room check waited forever. It now gives up after 30 s, tries once more, then says what to check. Some networks may also block devices from reaching each other, so the hosted link matters.
+
+### Party feedback: a start signal for everyone
+- First real group game (5 players, hand-held, hotspot): finished with no errors logged in about 80 s; the owner's count matched the app on 3 of 4 catches. People threw as soon as they got the ball, because hold-to-record gave them no start signal.
+- Someone films is now the default: tap Start, 3-2-1-Go, 6 s or tap Done. A spoken rule at game start says to wait for Go. Solo moved to setup, and stays hands-free.
+- Clap bar fix: a loud pop in the ignored start set the bar so high that one player's 4 claps counted as 0.
+- Party footage reviewed. Clap counts still depend on Muse Spark's rough catch time: one saved turn gave 1, 2 and 1 across three runs. When SAM misses the throw, sounds before it can count. Both are next on the list.
+
+### Referee rebuilt around phases (owner's design), and VAR
+- A turn is now ready → throw → in the air → caught or dropped. Muse Spark names the player and object from the first frames, SAM 3.1 outlines them once, then Muse Spark labels what the ball is doing in each frame. Plain code reads the labels and finds the phases; only sounds while the ball is in the air count. Picking up a dropped ball can't change a drop, and only the first throw counts. If no catch or drop is seen, the call is "couldn't tell".
+- SAM calls per turn: about 36 down to 2. Spark frames: 16 up to 24 plus a short identify call.
+- VAR (owner's idea): on the final results, a player can request a review. SAM follows the ball through every frame, Muse Spark looks harder, and the new call replaces the old one.
+- On saved footage, each party turn repeated its call and clap count across 4 runs (one drop's clap reading varied, but drops score 0). Labeled tests: catch calls 33 of 33; claps 11 of 11 offline after a rhythm rule for the catch sound. Those turns guided the tuning, so fresh turns are needed. Average 18 s per turn in that run (three test suites at once), up from about 10 s, but it runs in the background now.
+
+### Room Scavenger (second game)
+Makes the scan matter: Muse Spark writes clues from what the scan verified in this room; the player walks, finds it, and shows it to the camera; SAM checks the last frame and Muse Spark judges. Plain code blocks unsafe clues and items, swaps in safe backup clues, and scores (one point per second left, at least one). The two games share the camera, turns, queue, results and resume through a small game definition.
+
+### Direction: seniors, standing or seated
+Owner's direction, personal to them: Room Rush for group activity time in senior communities, for camaraderie and entertainment. No health claims. Setup now asks Standing/Walking or Seated. Seated Clap Catch uses a balloon with an 8 s turn; seated Scavenger clues are solved with what's worn or within reach (15 s). Standing modes are unchanged, for active players. Not yet tested with a balloon or with seniors; talk to an activities director first.
